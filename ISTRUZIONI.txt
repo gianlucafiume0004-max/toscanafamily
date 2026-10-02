@@ -1,0 +1,10 @@
+1. Estrai lo ZIP.
+2. Copia App.jsx, main.jsx e style.css dalla cartella src dentro:
+   C:\Users\Pingu\Desktop\ToscanaFamily_Frontend\src
+3. Sostituisci i file esistenti ed elimina style.css.css, se presente.
+4. Esegui:
+   cd /d "C:\Users\Pingu\Desktop\ToscanaFamily_Frontend"
+   rmdir /s /q dist
+   npm run build
+   npm run preview
+5. Se funziona, pubblica la nuova cartella dist su Netlify.

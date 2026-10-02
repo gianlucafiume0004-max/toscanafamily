@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+geocode-cache.json
+geocode-results.csv

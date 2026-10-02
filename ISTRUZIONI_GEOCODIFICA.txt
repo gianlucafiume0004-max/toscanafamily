@@ -1,0 +1,18 @@
+TOSCANA FAMILY - GEOCODIFICA PARCHI
+
+1) Copia geocode-parks.mjs nella cartella principale del progetto.
+2) Installa la libreria: npm install @supabase/supabase-js
+3) Nel Prompt imposta temporaneamente le variabili (non salvarle nel frontend):
+   set SUPABASE_URL=il_tuo_project_url
+   set SUPABASE_SECRET_KEY=la_tua_secret_key
+   set NOMINATIM_CONTACT=la_tua_email
+4) Anteprima su 10 parchi:
+   node geocode-parks.mjs --limit=10
+5) Controlla geocode-results.csv.
+6) Se i risultati sono corretti, aggiorna Supabase:
+   node geocode-parks.mjs --write --limit=180
+
+ATTENZIONE
+- La secret key non deve avere prefisso VITE_ e non va pubblicata su Netlify o GitHub.
+- Non chiudere il Prompt durante l'esecuzione.
+- Lo script usa una cache locale e una sola richiesta alla volta.

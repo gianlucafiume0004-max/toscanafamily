@@ -1,0 +1,72 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+);
+
+async function geocode(address) {
+  const url =
+    `https://nominatim.openstreetmap.org/search?` +
+    `format=json&q=${encodeURIComponent(address)}`;
+
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "LaPianaFamily/1.0"
+    }
+  });
+
+  const data = await response.json();
+
+  if (!data.length) return null;
+
+  return {
+    lat: parseFloat(data[0].lat),
+    lon: parseFloat(data[0].lon)
+  };
+}
+
+async function run() {
+  const { data: parks } = await supabase
+    .from("parks")
+    .select("*")
+    .is("latitudine", null);
+
+  for (const park of parks) {
+    const query = [
+      park.nome,
+      park.indirizzo,
+      park.comune,
+      "Toscana"
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    console.log("Cerco:", query);
+
+    const coords = await geocode(query);
+
+    if (!coords) {
+      console.log("Non trovato");
+      continue;
+    }
+
+    await supabase
+      .from("parks")
+      .update({
+        latitudine: coords.lat,
+        longitudine: coords.lon
+      })
+      .eq("id", park.id);
+
+    console.log(
+      `${park.nome} -> ${coords.lat}, ${coords.lon}`
+    );
+
+    await new Promise(r => setTimeout(r, 1200));
+  }
+
+  console.log("Fine");
+}
+
+run();
