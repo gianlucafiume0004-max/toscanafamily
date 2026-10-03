@@ -1,0 +1,33 @@
+name: Raccolta dati ToscanaFamily
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: raccolta-dati-toscanafamily
+  cancel-in-progress: false
+
+jobs:
+  raccogli-dati:
+    name: Raccogli nuovi contenuti
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Scarica repository
+        uses: actions/checkout@v4
+
+      - name: Configura Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installa dipendenze
+        run: npm ci
+
+      - name: Esegui raccolta dati
+        run: node scripts/collect-data.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
