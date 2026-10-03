@@ -1,23 +1,29 @@
-name: Import OSM
+name: Import OSM ToscanaFamily
 
 on:
   workflow_dispatch:
 
 jobs:
-  osm:
+  importa-osm:
+    name: Importa dati OpenStreetMap
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Scarica repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Configura Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - name: Installa dipendenze
+        run: npm ci
 
-      - run: node scripts/import-osm.mjs
+      - name: Esegui import OSM
+        run: node scripts/import-osm.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
