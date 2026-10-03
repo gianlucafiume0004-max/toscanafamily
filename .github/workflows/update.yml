@@ -28,3 +28,9 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NOMINATIM_CONTACT: ${{ secrets.NOMINATIM_CONTACT }}
         run: node geocode-parks.mjs --write
+
+- name: Aggiorna eventi
+env:
+SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+run: node scripts/update-events.mjs --write
