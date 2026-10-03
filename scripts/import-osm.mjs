@@ -18,7 +18,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-const overpassUrl = "https://overpass-api.de/api/interpreter";
+const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
 
 const overpassQuery = `
 [out:json][timeout:120];
