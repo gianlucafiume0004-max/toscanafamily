@@ -22,15 +22,7 @@ const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
 
 const overpassQuery = `
 [out:json][timeout:120];
-
-area["name"="Toscana"]["boundary"="administrative"]->.searchArea;
-
-(
-  nodearea.searchArea;
-  wayarea.searchArea;
-  relationarea.searchArea;
-);
-
+nwr42.20,9.65,44.50,12.40;
 out center tags;
 `;
 
