@@ -20,7 +20,11 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
 
-const overpassQuery = ` [out:json][timeout:120]; nwr42.20,9.65,44.50,12.40; out center tags; `;
+const overpassQuery = `
+[out:json][timeout:120];
+nwr(42.20,9.65,44.50,12.40);
+out center tags;
+`;
 
 function getCoordinates(item) {
   const latitude = item.lat ?? item.center?.lat ?? null;
