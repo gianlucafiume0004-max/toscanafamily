@@ -86,9 +86,10 @@ async function loadOpenStreetMapData() {
   const response = await fetch(overpassUrl, {
     method: "POST",
     headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
+Accept: "application/json",
+"Content-Type": "application/x-www-form-urlencoded",
+"User-Agent": "ToscanaFamily/1.0 (contact: gianlucafiume0004@gmail.com)"
+},
     body: new URLSearchParams({ data: overpassQuery })
   });
 
