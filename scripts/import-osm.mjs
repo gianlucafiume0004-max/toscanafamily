@@ -22,9 +22,8 @@ const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
 
 const overpassQuery = `
 [out:json][timeout:120];
-(
-node["leisure"="playground"](42.20,9.65,44.,44.50,12.40;
-relation["leisure"="playground"](42.20,9.65,44.50s;
+nwr(42.20,9.65,44.50,12.40);
+out center tags;
 `;
 
 function getCoordinates(item) {
