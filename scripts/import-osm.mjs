@@ -20,13 +20,19 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
 
+
 const overpassQuery = `
 [out:json][timeout:120];
 
 (
-node["leisure"="playground"](42.20,9.65,44.50,12.40ound"](42.20,9.65,leisure"="playground"](42.20e["leisure"="indoor_play"](42.20,9.65,44.50,12.40);
-;
-relation["leisure"="indoor_play"](42.20,9.65,44.50,;
+  node["leisure"="playground"](42.20,9.65,44.50,12.,12.40;
+  relation42.20,9.65,44.50,12.40;
+
+  node["leisure"="indoor_play"](42.20,9.65.65,44.50,12.40;
+  relation42.20,9.65,44.50,12.40;
+);
+
+out center tags;
 `;
 
 function getCoordinates(item) {
@@ -92,13 +98,15 @@ async function loadOpenStreetMapData() {
 
   const response = await fetch(overpassUrl, {
     method: "POST",
-    headers: {
+  headers: {
 Accept: "application/json",
 "Content-Type": "application/x-www-form-urlencoded",
-"User-Agent": "ToscanaFamily/1.0 (contact: gianlucafiume0004@gmail.com)"
+"User-Agent": "ToscanaFamilyCollector/1.0"
 },
-    body: new URLSearchParams({ data: overpassQuery })
-  });
+body: new URLSearchParams({
+data: overpassQuery
+})
+});
 
   if (!response.ok) {
     const responseText = await response.text();
