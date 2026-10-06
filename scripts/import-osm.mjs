@@ -20,11 +20,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
 
-const overpassQuery = `
-[out:json][timeout:120];
-nwr42.20,9.65,44.50,12.40;
-out center tags;
-`;
+const overpassQuery = ` [out:json][timeout:120]; nwr42.20,9.65,44.50,12.40; out center tags; `;
 
 function getCoordinates(item) {
   const latitude = item.lat ?? item.center?.lat ?? null;
@@ -91,10 +87,9 @@ async function loadOpenStreetMapData() {
     method: "POST",
     headers: {
       Accept: "application/json",
-      "Content-Type": "text/plain; charset=UTF-8",
-      "User-Agent": "ToscanaFamilyCollector/1.0"
+      "Content-Type": "application/x-www-form-urlencoded"
     },
-    body: overpassQuery
+    body: new URLSearchParams({ data: overpassQuery })
   });
 
   if (!response.ok) {
