@@ -94,7 +94,8 @@ function createParkRecord(item) {
 
 async function loadOpenStreetMapData() {
   console.log("Avvio ricerca aree giochi su OpenStreetMap...");
-
+console.log("QUERY OVERPASS:");
+console.log(overpassQuery);
   const response = await fetch(overpassUrl, {
     method: "POST",
     headers: {
