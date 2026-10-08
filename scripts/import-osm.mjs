@@ -18,7 +18,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-const overpassUrl = "https:" + "//overpass.kumi.systems/api/interpreter";
+const overpassUrl = "https:" + "//overpass-api.de/api/interpreter";
 const osmBaseUrl = "https:" + "//www.openstreetmap.org";
 
 const bbox = "(42.20,9.65,44.50,12.40)";
