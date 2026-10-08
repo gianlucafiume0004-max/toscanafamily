@@ -18,7 +18,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-const overpassUrl = "https:" + "//overpass-api.de/api/interpreter";
+const overpassUrl = "https:" + "//lz4.overpass-api.de/api/interpreter";
 const osmBaseUrl = "https:" + "//www.openstreetmap.org";
 
 const bbox = "(43.55,10.65,44.20,11.45)";
@@ -74,22 +74,35 @@ function createParkRecord(item) {
   const { latitude, longitude } = getCoordinates(item);
 
   return {
-    name: tags.name || "Area giochi",
-    description:
-      tags.description ||
-      tags.note ||
-      "Area giochi rilevata tramite OpenStreetMap",
-    address: getAddress(tags),
-    city: getCity(tags),
-    province: tags["addr:province"] || null,
-    latitude,
-    longitude,
-    website: tags.website || tags["contact:website"] || null,
-    source: "OpenStreetMap",
-    source_url: createOsmUrl(item),
-    external_id: `osm-${item.type}-${item.id}`,
-    updated_at: new Date().toISOString()
-  };
+  nome: tags.name || "Area giochi",
+  name: tags.name || "Area giochi",
+
+  comune: getCity(tags),
+  city: getCity(tags),
+
+  provincia: tags["addr:province"] || null,
+  province: tags["addr:province"] || null,
+
+  latitudine: latitude,
+  latitude,
+
+  longitudine: longitude,
+  longitude,
+
+  indirizzo: getAddress(tags),
+  address: getAddress(tags),
+
+  description:
+    tags.description ||
+    tags.note ||
+    "Area giochi rilevata tramite OpenStreetMap",
+
+  website: tags.website || tags["contact:website"] || null,
+  source: "OpenStreetMap",
+  source_url: createOsmUrl(item),
+  external_id: `osm-${item.type}-${item.id}`,
+  updated_at: new Date().toISOString()
+};
 }
 
 async function loadOpenStreetMapData() {
