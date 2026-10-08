@@ -22,8 +22,27 @@ jobs:
       - name: Installa dipendenze
         run: npm ci
 
-      - name: Esegui import OSM
-        run: node scripts/import-osm.mjs
+      - name: Importa dati OSM con tentativi automatici
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          for attempt in 1 2 3 4 5
+          do
+            echo "Tentativo $attempt di 5..."
+
+            if node scripts/import-osm.mjs
+            then
+              echo "Importazione completata correttamente."
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 5 ]
+            then
+              echo "Tentativo fallito. Nuovo tentativo tra 30 secondi..."
+              sleep 30
+            fi
+          done
+
+          echo "Importazione fallita dopo 5 tentativi."
+          exit 1
