@@ -24,8 +24,13 @@ const osmBaseUrl = "https:" + "//www.openstreetmap.org";
 const overpassQuery = `
 [out:json][timeout:120];
 (
-  nwr42.20,9.65,44.50,12.40;
-  nwr42.20,9.65,44.50,12.40;
+  node42.20,9.65,44.50,12.40;
+  way42.20,9.65,44.50,12.40;
+  relation42.20,9.65,44.50,12.40;
+
+  node42.20,9.65,44.50,12.40;
+  way42.20,9.65,44.50,12.40;
+  relation42.20,9.65,44.50,12.40;
 );
 out center tags;
 `;
