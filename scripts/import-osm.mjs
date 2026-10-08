@@ -21,7 +21,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 const overpassUrl = "https:" + "//overpass-api.de/api/interpreter";
 const osmBaseUrl = "https:" + "//www.openstreetmap.org";
 
-const bbox = "(42.20,9.65,44.50,12.40)";
+const bbox = "(43.55,10.65,44.20,11.45)";
 const playgroundFilter = '["leisure"="playground"]';
 const indoorPlayFilter = '["leisure"="indoor_play"]';
 
