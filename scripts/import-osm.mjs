@@ -21,19 +21,18 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 const overpassUrl = "https:" + "//overpass.kumi.systems/api/interpreter";
 const osmBaseUrl = "https:" + "//www.openstreetmap.org";
 
-const overpassQuery = `
-[out:json][timeout:120];
-(
-  node42.20,9.65,44.50,12.40;
-  way42.20,9.65,44.50,12.40;
-  relation42.20,9.65,44.50,12.40;
+const bbox = "(42.20,9.65,44.50,12.40)";
+const playgroundFilter = '["leisure"="playground"]';
+const indoorPlayFilter = '["leisure"="indoor_play"]';
 
-  node42.20,9.65,44.50,12.40;
-  way42.20,9.65,44.50,12.40;
-  relation42.20,9.65,44.50,12.40;
-);
-out center tags;
-`;
+const overpassQuery = [
+  "[out:json][timeout:120];",
+  "(",
+  "  nwr" + playgroundFilter + bbox + ";",
+  "  nwr" + indoorPlayFilter + bbox + ";",
+  ");",
+  "out center tags;"
+].join("\n");
 
 function getCoordinates(item) {
   const latitude = item.lat ?? item.center?.lat ?? null;
