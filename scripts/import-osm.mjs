@@ -18,20 +18,15 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
-
+const overpassUrl = "https:" + "//overpass.kumi.systems/api/interpreter";
+const osmBaseUrl = "https:" + "//www.openstreetmap.org";
 
 const overpassQuery = `
 [out:json][timeout:120];
-
 (
-  node["leisure"="playground"](42.20,9.65,44.50,12.,12.40;
-  relation42.20,9.65,44.50,12.40;
-
-  node["leisure"="indoor_play"](42.20,9.65.65,44.50,12.40;
-  relation42.20,9.65,44.50,12.40;
+  nwr42.20,9.65,44.50,12.40;
+  nwr42.20,9.65,44.50,12.40;
 );
-
 out center tags;
 `;
 
@@ -67,7 +62,7 @@ function getAddress(tags = {}) {
 }
 
 function createOsmUrl(item) {
-  return `https://www.openstreetmap.org/${item.type}/${item.id}`;
+  return `${osmBaseUrl}/${item.type}/${item.id}`;
 }
 
 function createParkRecord(item) {
@@ -98,15 +93,15 @@ async function loadOpenStreetMapData() {
 
   const response = await fetch(overpassUrl, {
     method: "POST",
-  headers: {
-Accept: "application/json",
-"Content-Type": "application/x-www-form-urlencoded",
-"User-Agent": "ToscanaFamilyCollector/1.0"
-},
-body: new URLSearchParams({
-data: overpassQuery
-})
-});
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "ToscanaFamilyCollector/1.0"
+    },
+    body: new URLSearchParams({
+      data: overpassQuery
+    })
+  });
 
   if (!response.ok) {
     const responseText = await response.text();
