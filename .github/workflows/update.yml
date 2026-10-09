@@ -1,4 +1,3 @@
-cat > .github/workflows/update.yml <<'EOF'
 name: Aggiornamento automatico parchi ed eventi
 
 on:
@@ -36,4 +35,3 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           EVENT_REQUEST_TIMEOUT_MS: 60000
         run: node scripts/update-events.mjs --write
-EOF
