@@ -1,3 +1,4 @@
+cat > .github/workflows/update.yml <<'EOF'
 name: Aggiornamento automatico parchi ed eventi
 
 on:
@@ -29,9 +30,10 @@ jobs:
           NOMINATIM_CONTACT: ${{ secrets.NOMINATIM_CONTACT }}
         run: node geocode-parks.mjs --write
 
-            - name: Aggiorna eventi
+      - name: Aggiorna eventi
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           EVENT_REQUEST_TIMEOUT_MS: 60000
         run: node scripts/update-events.mjs --write
+EOF
