@@ -33,4 +33,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          EVENT_REQUEST_TIMEOUT_MS: 60000
         run: node scripts/update-events.mjs --write
