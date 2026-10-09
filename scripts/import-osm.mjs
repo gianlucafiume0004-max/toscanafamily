@@ -74,8 +74,21 @@ function createParkRecord(item) {
   const { latitude, longitude } = getCoordinates(item);
 
   return {
-  nome: tags.name || "Area giochi",
-  name: tags.name || "Area giochi",
+  nome:
+  tags.name ||
+  tags["playground:name"] ||
+  tags.leisure_name ||
+  (getCity(tags)
+    ? `Area giochi - ${getCity(tags)}`
+    : "Area giochi"),
+
+name:
+  tags.name ||
+  tags["playground:name"] ||
+  tags.leisure_name ||
+  (getCity(tags)
+    ? `Area giochi - ${getCity(tags)}`
+    : "Area giochi"),
 
   comune: getCity(tags),
   city: getCity(tags),
