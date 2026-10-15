@@ -402,7 +402,7 @@ async function collectVisitTuscanyEvents(source) {
 }
 
 function extractPointDate($, selector) {
-  const field = $(selector).first();
+const field = $(selector).first();
   if (!field.length) return null;
 
   const year = Number(field.find(".point-year").first().text().trim());
