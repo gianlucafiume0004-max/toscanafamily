@@ -566,18 +566,35 @@ async function collectOpenPaEvents(source) {
 }
 
 function extractPointDate($, selector) {
-const field = $(selector).first();
+  const field = $(selector).first();
   if (!field.length) return null;
 
-  const year = Number(field.find(".point-year").first().text().trim());
-  const day = Number(field.find(".point-date").first().text().trim());
-  const monthText = field.find(".point-month").first().text().trim().toLowerCase();
+  const year =
+    Number(field.find(".point-year").first().text().trim()) ||
+    new Date().getFullYear();
+
+  const day = Number(
+    field.find(".point-date").first().text().trim()
+  );
+
+  const monthText = field
+    .find(".point-month")
+    .first()
+    .text()
+    .trim()
+    .toLowerCase();
+
   const month = ITALIAN_MONTHS[monthText];
 
-  if (!year || !day || month === undefined) return null;
+  if (!day || month === undefined) return null;
 
-  const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  const date = new Date(
+    Date.UTC(year, month, day, 12, 0, 0)
+  );
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toISOString();
 }
 
 function extractHtmlEvent(html, source, pageUrl) {
@@ -640,7 +657,157 @@ function extractHtmlEvent(html, source, pageUrl) {
   return event;
 }
 
+function parseMuseDate(value) {
+  const months = {
+    gennaio: 0,
+    febbraio: 1,
+    marzo: 2,
+    aprile: 3,
+    maggio: 4,
+    giugno: 5,
+    luglio: 6,
+    agosto: 7,
+    settembre: 8,
+    ottobre: 9,
+    novembre: 10,
+    dicembre: 11
+  };
+
+  const match = String(value || "")
+    .trim()
+    .toLowerCase()
+    .match(/(\d{1,2})\s+([a-zàèéìòù]+)\s+(\d{2,4})/i);
+
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = months[match[2]];
+  let year = Number(match[3]);
+
+  if (year < 100) year += 2000;
+  if (!day || month === undefined || !year) return null;
+
+  const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function extractMuseEvent(html, source, pageUrl, feedTitle) {
+  const $ = cheerio.load(html);
+
+  const title = compact(
+    $("h1").first().text() ||
+    feedTitle ||
+    $('meta[property="og:title"]').attr("content") ||
+    $("title").first().text(),
+    300
+  );
+
+  const dateText = $(".event-date").first().text().replace(/\s+/g, " ").trim();
+
+  const startMatch = dateText.match(
+    /dal?\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+  );
+
+  const endMatch = dateText.match(
+    /al\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+  );
+
+  const singleMatch = dateText.match(
+    /(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+  );
+
+  const startsOn = parseMuseDate(
+    startMatch?.[1] || singleMatch?.[1]
+  );
+
+  const endsOn = parseMuseDate(endMatch?.[1]) || startsOn;
+
+  if (!title || !startsOn) return null;
+
+  const description = compact(
+    $(".events-intro .content").first().text() ||
+    $(".page-composer .content").first().text() ||
+    $('meta[name="description"]').attr("content") ||
+    $('meta[property="og:description"]').attr("content") ||
+    "",
+    4000
+  ) || null;
+
+  const location = compact(
+    $(".is-pin").first().text() ||
+    $(".event-location").first().text() ||
+    "Firenze",
+    300
+  ) || "Firenze";
+
+  const image =
+    absoluteUrl($('meta[property="og:image"]').attr("content"), pageUrl) ||
+    null;
+
+  const event = {
+    title,
+    city: source.comune || "Firenze",
+    location,
+    starts_on: startsOn,
+    ends_on: endsOn,
+    description,
+    source_url: pageUrl,
+    image_url: image,
+    address: null,
+    source_name: source.name
+  };
+
+  event.import_key = eventKey(event);
+  return event;
+}
+
+async function collectRssEvents(source) {
+  const xml = await fetchText(source.url);
+  const $ = cheerio.load(xml, { xmlMode: true });
+
+  const items = $("item").toArray().slice(0, MAX_LINKS_PER_SOURCE);
+  const byKey = new Map();
+
+  console.log("  RSS items found: " + items.length);
+
+  for (const item of items) {
+    const feedTitle = compact($(item).find("title").first().text(), 300);
+    const pageUrl = compact($(item).find("link").first().text(), 1000);
+
+    if (!pageUrl) continue;
+
+    try {
+      await sleep(300);
+
+      const html = await fetchText(pageUrl);
+      const event = extractMuseEvent(
+        html,
+        source,
+        pageUrl,
+        feedTitle
+      );
+
+      if (event) {
+        byKey.set(event.import_key, event);
+      } else {
+        console.log("  RSS SKIP NO EVENT DATE: " + feedTitle);
+      }
+    } catch (error) {
+      console.warn(
+        "  RSS skip " + pageUrl + ": " + error.message
+      );
+    }
+  }
+
+  console.log("  RSS normalized events: " + byKey.size);
+  return [...byKey.values()];
+}
+
 async function collectSourceEvents(source) {
+  if (String(source.type || "").toLowerCase() === "rss") {
+    return await collectRssEvents(source);
+  }
+
   if (String(source.name || "").toLowerCase() === "visit tuscany") {
     return collectVisitTuscanyEvents(source);
   }
