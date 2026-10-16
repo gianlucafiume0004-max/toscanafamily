@@ -568,12 +568,50 @@ async function collectOpenPaEvents(source) {
 }
 
 function extractPointDate($, selector) {
-  const field = $(selector).first();
+  let field = $(selector).first();
+
+  const isEndDate =
+    String(selector || "").toLowerCase().includes("fine");
+
+  if (!field.length) {
+    const points = $("#date-e-orari .point-list");
+
+    if (points.length) {
+      field = isEndDate
+        ? points.last()
+        : points.first();
+    }
+  }
+
   if (!field.length) return null;
 
-  const year =
-    Number(field.find(".point-year").first().text().trim()) ||
-    new Date().getFullYear();
+  const monthAliases = {
+    gen: 0,
+    gennaio: 0,
+    feb: 1,
+    febbraio: 1,
+    mar: 2,
+    marzo: 2,
+    apr: 3,
+    aprile: 3,
+    mag: 4,
+    maggio: 4,
+    giu: 5,
+    giugno: 5,
+    lug: 6,
+    luglio: 6,
+    ago: 7,
+    agosto: 7,
+    set: 8,
+    sett: 8,
+    settembre: 8,
+    ott: 9,
+    ottobre: 9,
+    nov: 10,
+    novembre: 10,
+    dic: 11,
+    dicembre: 11
+  };
 
   const day = Number(
     field.find(".point-date").first().text().trim()
@@ -584,11 +622,37 @@ function extractPointDate($, selector) {
     .first()
     .text()
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\./g, "");
 
-  const month = ITALIAN_MONTHS[monthText];
+  const month =
+    monthAliases[monthText] ??
+    ITALIAN_MONTHS[monthText];
 
-  if (!day || month === undefined) return null;
+  const dateSectionText = $("#date-e-orari")
+    .text()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const pageText = $("body")
+    .text()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const yearMatch =
+    dateSectionText.match(/\b(20\d{2})\b/) ||
+    pageText.match(/\b(20\d{2})\b/);
+
+  const year =
+    Number(
+      field.find(".point-year").first().text().trim()
+    ) ||
+    Number(yearMatch?.[1]) ||
+    new Date().getFullYear();
+
+  if (!day || month === undefined || !year) {
+    return null;
+  }
 
   const date = new Date(
     Date.UTC(year, month, day, 12, 0, 0)
@@ -697,6 +761,7 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
   const $ = cheerio.load(html);
 
   const title = compact(
+    $('[data-element="event-title"]').first().text() ||
     $("h1").first().text() ||
     feedTitle ||
     $('meta[property="og:title"]').attr("content") ||
@@ -708,6 +773,12 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
     String(source.name || "").toLowerCase().includes("ragionieri") ||
     String(pageUrl || "").includes(
       "biblioteca.comune.sesto-fiorentino.fi.it"
+    );
+
+  const isCalenzano =
+    String(source.name || "").toLowerCase().includes("calenzano") ||
+    String(pageUrl || "").includes(
+      "comune.calenzano.fi.it"
     );
 
   const articleText = compact(
@@ -722,7 +793,7 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
 
   let dateText;
 
-  if (isRagionieri) {
+  if (isRagionieri || isCalenzano) {
     dateText = compact(
       [
         $(".data-evento").first().text(),
@@ -768,7 +839,26 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
   let startMatch;
   let endMatch;
 
-  if (isRagionieri) {
+  if (isCalenzano) {
+    const calenzanoDate =
+      "(\\d{1,2}\\s+(?:" + months + ")\\s+\\d{4})";
+
+    const calenzanoStartRegex = new RegExp(
+      "Data\\s+inizio\\s*:?\\s*" + calenzanoDate,
+      "i"
+    );
+
+    const calenzanoEndRegex = new RegExp(
+      "Data\\s+fine\\s*:?\\s*" + calenzanoDate,
+      "i"
+    );
+
+    startMatch =
+      dateText.match(calenzanoStartRegex) ||
+      dateText.match(singleRegex);
+
+    endMatch = dateText.match(calenzanoEndRegex);
+  } else if (isRagionieri) {
     startMatch =
       dateText.match(startRegex) ||
       dateText.match(singleRegex);
