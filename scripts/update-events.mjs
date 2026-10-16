@@ -871,14 +871,17 @@ async function eventExists(event) {
 
 async function insertCompatibleEvent(event) {
   // These five columns are already used by App.jsx.
-  const row = {
-    id: `AUTO_${event.import_key.slice(0, 20)}`,
-    title: event.title,
-    city: event.city,
-    location: event.location,
-    starts_on: event.starts_on,
-    description: event.description
-  };
+  
+const row = {
+  id: `AUTO_${event.import_key.slice(0, 20)}`,
+  title: event.title,
+  city: event.city,
+  location: event.location,
+  starts_on: event.starts_on,
+  ends_on: event.ends_on || null,
+  source_url: event.source_url || null,
+  description: event.description
+};
 
   const { error } = await supabase.from("events").insert(row);
   if (error) throw error;
