@@ -1,3 +1,5 @@
+
+import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
 import crypto from "node:crypto";
@@ -702,51 +704,143 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
     300
   );
 
-  const dateText = $(".event-date").first().text().replace(/\s+/g, " ").trim();
+  const isRagionieri =
+    String(source.name || "").toLowerCase().includes("ragionieri") ||
+    String(pageUrl || "").includes(
+      "biblioteca.comune.sesto-fiorentino.fi.it"
+    );
 
-  const startMatch = dateText.match(
-    /dal?\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+  const articleText = compact(
+    $("article").first().text() ||
+    $(".entry-content").first().text() ||
+    $(".post-content").first().text() ||
+    $("main").first().text() ||
+    $(".content").first().text() ||
+    $("body").text(),
+    15000
   );
 
-  const endMatch = dateText.match(
-    /al\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+  let dateText;
+
+  if (isRagionieri) {
+    dateText = compact(
+      [
+        $(".data-evento").first().text(),
+        $(".event_date").first().text(),
+        articleText
+      ]
+        .filter(Boolean)
+        .join(" "),
+      15000
+    );
+  } else {
+    dateText = $(".event-date")
+      .first()
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const months =
+    "gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|" +
+    "settembre|ottobre|novembre|dicembre";
+
+  const startRegex = new RegExp(
+    "(?:dal|da|il|sabato|domenica|lunedì|martedì|mercoledì|" +
+    "giovedì|venerdì)\\s+(?:il\\s+)?(\\d{1,2}\\s+(?:" +
+    months +
+    ")\\s+\\d{4})",
+    "i"
   );
 
-  const singleMatch = dateText.match(
-    /(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+  const singleRegex = new RegExp(
+    "(\\d{1,2}\\s+(?:" + months + ")\\s+\\d{4})",
+    "i"
   );
 
-  const startsOn = parseMuseDate(
-    startMatch?.[1] || singleMatch?.[1]
+  const endRegex = new RegExp(
+    "(?:al|fino al)\\s+(\\d{1,2}\\s+(?:" +
+    months +
+    ")\\s+\\d{4})",
+    "i"
   );
 
+  let startMatch;
+  let endMatch;
+
+  if (isRagionieri) {
+    startMatch =
+      dateText.match(startRegex) ||
+      dateText.match(singleRegex);
+
+    endMatch = dateText.match(endRegex);
+  } else {
+    startMatch = dateText.match(
+      /dal?\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+    );
+
+    endMatch = dateText.match(
+      /al\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+    );
+
+    const singleMatch = dateText.match(
+      /(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
+    );
+
+    startMatch = startMatch || singleMatch;
+  }
+
+  const startsOn = parseMuseDate(startMatch?.[1]);
   const endsOn = parseMuseDate(endMatch?.[1]) || startsOn;
 
-  if (!title || !startsOn) return null;
+  if (!title || !startsOn) {
+    if (isRagionieri) {
+      console.log(
+        "  RAGIONIERI DATE NOT FOUND: " +
+        title +
+        " | testo: " +
+        dateText.slice(0, 250)
+      );
+    }
+
+    return null;
+  }
 
   const description = compact(
     $(".events-intro .content").first().text() ||
     $(".page-composer .content").first().text() ||
+    $(".entry-content").first().text() ||
+    $(".post-content").first().text() ||
+    $("article").first().text() ||
     $('meta[name="description"]').attr("content") ||
     $('meta[property="og:description"]').attr("content") ||
     "",
     4000
   ) || null;
 
+  const defaultLocation = isRagionieri
+    ? "Biblioteca Ernesto Ragionieri"
+    : source.comune || "Firenze";
+
   const location = compact(
     $(".is-pin").first().text() ||
     $(".event-location").first().text() ||
-    "Firenze",
+    $(".luogo").first().text() ||
+    defaultLocation,
     300
-  ) || "Firenze";
+  ) || defaultLocation;
 
   const image =
-    absoluteUrl($('meta[property="og:image"]').attr("content"), pageUrl) ||
-    null;
+    absoluteUrl(
+      $('meta[property="og:image"]').attr("content"),
+      pageUrl
+    ) || null;
 
   const event = {
     title,
-    city: source.comune || "Firenze",
+    city:
+      source.comune ||
+      (isRagionieri ? "Sesto Fiorentino" : "Firenze"),
     location,
     starts_on: startsOn,
     ends_on: endsOn,

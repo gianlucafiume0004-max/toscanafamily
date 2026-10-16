@@ -1,0 +1,8 @@
+HTTP/1.1 200 200
+Server: nginx
+Date: Fri, 09 Oct 2026 20:58:04 GMT
+Content-Type: application/json;charset=UTF-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+

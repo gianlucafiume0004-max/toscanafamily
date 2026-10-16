@@ -1,0 +1,194 @@
+EVENT IMPORT: PREVIEW MODE
+Active event sources: 20
+[1/20] Comune Firenze Eventi
+  JSON-LD events found: 13
+  SKIP NOT FAMILY: Evento culturale
+  SKIP NOT FAMILY: Orso soccorso: impariamo insieme il primo soccorso
+  SKIP NOT FAMILY: Mese dell'affido: evento Colori di luce
+  SKIP NOT FAMILY: Un Codice per una Nuova Europa
+  SKIP NOT FAMILY: Mese dell'affido: evento Una casa per... raccontarsi
+  SKIP NOT FAMILY: Incontro "Giorgio La Pira e la Costituzione"
+  SKIP EXPIRED: Le parole e le lingue della Costituzione – FONDAMENTA
+  SKIP EXPIRED: Mese dell'affido: evento informativo sul Centro affidi
+  SKIP EXPIRED: Foreste che ritornano: Mostra immersiva in Palazzo Vecchio
+  SKIP EXPIRED: Archivio Storico: Mostra documentale "Dalle carte dell'archivio Enzo Ferroni: l'alluvione e il restauro delle opere d'arte
+  SKIP EXPIRED: Mese dell'affido: evento M'Amanga
+  SKIP EXPIRED: Leggere per non dimenticare
+  SKIP EXPIRED: Festival Nazionale Economia Civile
+[2/20] Comune Sesto Fiorentino
+  JSON-LD events found: 12
+  SKIP EXPIRED: Svuota la cantina - Domenica 11 ottobre 2026
+  SKIP EXPIRED: XIX Giornata della Protezione civile
+  SKIP NOT FAMILY: Sesto Mondo 2026
+  SKIP EXPIRED: Liberi Tutti 2026
+  SKIP EXPIRED: Giovedì sotto le stelle
+  SKIP EXPIRED: Mostra sulla Tecnica di Tessitura del Popolo di Li di etnia Han Nan
+  SKIP EXPIRED: Buongiorno Ceramica
+  SKIP EXPIRED: Progetto Orchestra
+  SKIP EXPIRED: Mostra di Carta Intagliata
+  SKIP EXPIRED: Fiorinfiera 2026
+  SKIP EXPIRED: Ritrovarsi per la città
+[3/20] Comune Scandicci
+  JSON-LD events found: 12
+  SKIP EXPIRED: L'Ora delle Storie
+  SKIP EXPIRED: Convocazione e ordine del giorno del Consiglio Comunale del 30 luglio 2026
+  SKIP EXPIRED: Convocazione e Ordine del giorno del Consiglio Comunale del 18 giugno 2026
+  SKIP EXPIRED: Convocazione e Ordine del Giorno del Consiglio Comunale del 26 maggio 2026
+  SKIP EXPIRED: Seduta del Consiglio Comunale
+  SKIP EXPIRED: Auroradisera 2026: Paolo Kessisoglu al Teatro Aurora il 29 marzo
+  SKIP EXPIRED: Il libro della Vita 2025/2026 - Domenica 22 marzo 2026
+  SKIP EXPIRED: Vetrina antiquaria e mercatino arte e ingegno
+  SKIP EXPIRED: Open day 2026 C.E.I. Turri
+  SKIP EXPIRED: Open day 2026 Nido La Nuova Girandola
+  SKIP EXPIRED: Open day 2026 Servizi Educativi Comunali 18 marzo 2026
+  SKIP EXPIRED: Open day 2026 C.E.I. B. Ciari
+[4/20] Comune Pistoia
+  JSON-LD events found: 0
+[5/20] Visit Tuscany
+  Visit Tuscany GraphQL pages: 10, normalized events: 118
+  JSON-LD events found: 118
+  SKIP NOT FAMILY: L’Intrepida
+  SKIP NOT FAMILY: Borgo diVino in tour
+  SKIP NOT FAMILY: Ecomaratona del Chianti Classico
+  SKIP NOT FAMILY: V.I.A. FRANCIGENA - Vivere, Incontrare, Assaporare
+  SKIP NOT FAMILY: Terre di Pisa Food&Wine Festival
+  SKIP NOT FAMILY: Edward Hopper
+  SKIP NOT FAMILY: Calici di note d'autunno
+  NEW: Festa della Castagna e del Marrone DOP di Caprese | Caprese Michelangelo | 2026-10-17T12:00:00.000Z
+  SKIP NOT FAMILY: Pellegrino per 1 giorno
+  SKIP NOT FAMILY: La Via di Caterina
+  SKIP NOT FAMILY: Festival Organistico Internazionale Sergio Rosaia
+  SKIP NOT FAMILY: Calenzano 1325
+  SKIP NOT FAMILY: La terra che ci unisce
+  SKIP NOT FAMILY: La Circolare dei Castelli: sui sentieri della storia
+  SKIP NOT FAMILY: Incontri d'autunno
+  SKIP NOT FAMILY: Stagione di prosa del Teatro Guglielmi
+  SKIP NOT FAMILY: TIPO Festival - Turismo Industriale Prato
+  SKIP NOT FAMILY: Radici per crescere
+  SKIP NOT FAMILY: Wor(l)d in progress
+  SKIP NOT FAMILY: Gioca Mistero
+  SKIP NOT FAMILY: Sagra del tordo
+  SKIP NOT FAMILY: PumpkinART - Zucche da artista
+  SKIP NOT FAMILY: Volterragusto
+  SKIP NOT FAMILY: Moments Musicaux
+  SKIP NOT FAMILY: Mercatino all'Anselmo
+  SKIP NOT FAMILY: Camminata tra gli olivi
+  NEW: Festa della Castagna | Vinci | 2026-10-25T12:00:00.000Z
+  SKIP NOT FAMILY: Palio dei Caci
+  SKIP NOT FAMILY: Mostra Mercato del Marron Buono di Marradi
+  SKIP NOT FAMILY: Massa Underground
+  SKIP NOT FAMILY: Sagra del Totano di Capraia
+  SKIP NOT FAMILY: Lucca Comics & Games
+  SKIP NOT FAMILY: 50 Giorni di Cinema a Firenze
+  SKIP NOT FAMILY: MyStufato
+  SKIP NOT FAMILY: Città di Halloween
+  SKIP NOT FAMILY: Trekking Urbano
+  SKIP NOT FAMILY: Halloween a Montespertoli
+  SKIP NOT FAMILY: Trekking Urbano sulle tracce di San Francesco
+  SKIP NOT FAMILY: (S)Oggettivamente
+  SKIP NOT FAMILY: Maccari a modo suo
+  SKIP NOT FAMILY: Victor Man
+  SKIP NOT FAMILY: Broken. Il potere del frammento
+  SKIP NOT FAMILY: Sagra del Buco Unto
+  SKIP NOT FAMILY: Non lo butto
+  SKIP NOT FAMILY: The Redemption of Nature
+  SKIP NOT FAMILY: Mostra Mercato del Tartufo Bianco di San Miniato
+  SKIP NOT FAMILY: Oltre il Rinascimento. Tra Dürer e Parmigianino
+  SKIP NOT FAMILY: (Yours) in the Undoing - Nel (tuo) disfare
+  SKIP NOT FAMILY: Radicondoli Christmas Market
+  SKIP NOT FAMILY: Le Fiaccole di Natale di Abbadia San Salvatore
+  SKIP NOT FAMILY: Capodanno della Valdelsa
+  SKIP NOT FAMILY: Forme nel Verde
+  SKIP NOT FAMILY: Grosseto: storie, profumi e panorami da vivere
+  SKIP NOT FAMILY: San Francesco "tutto serafico in ardore"
+  SKIP NOT FAMILY: Mese Pucciniano e Festival Puccini
+  SKIP NOT FAMILY: Cortona On The Move
+  SKIP NOT FAMILY: Palio delle Contrade di Buti
+  SKIP NOT FAMILY: Rendering the invisible
+  SKIP NOT FAMILY: Passo dopo passo
+  SKIP NOT FAMILY: Memo Vagaggini: la pittura tra realtà e sogno
+  SKIP NOT FAMILY: Gino Severini. Modernità come dialogo
+  SKIP NOT FAMILY: FORME - Festival di arte pubblica
+  SKIP NOT FAMILY: I Mercatini di San Quirico e Bagno Vignoni
+  SKIP NOT FAMILY: Abitare il Rinascimento
+  SKIP NOT FAMILY: Paesaggi Musicali Toscani
+  SKIP NOT FAMILY: Il Cuore nella Pietra
+  SKIP NOT FAMILY: Il Palio dei Somari
+  SKIP NOT FAMILY: Capodanno Pisano
+  SKIP NOT FAMILY: Firenze '50 '60 '70
+  SKIP NOT FAMILY: Rievocazione Storica di Grassina
+  SKIP NOT FAMILY: Scoppio del Carro
+  SKIP NOT FAMILY: Gare Remiere
+  SKIP NOT FAMILY: Valdambra da vivere 2026
+  SKIP NOT FAMILY: Turandot: O divina bellezza! O sogno! O meraviglia!
+  SKIP NOT FAMILY: Montecatini Opera Festival
+  SKIP NOT FAMILY: La Biblioteca svelata: il bestiario fantastico
+  SKIP NOT FAMILY: MIDA - Mostra Internazionale dell'Artigianato
+  SKIP NOT FAMILY: L'Ostensione della Sacra Cintola
+  SKIP NOT FAMILY: Infiorata di Scarperia
+  SKIP NOT FAMILY: Maggiolata Lucignanese
+  SKIP NOT FAMILY: Cantine Aperte e Vigneti Aperti
+  SKIP NOT FAMILY: Mostra delle Antiche Camelie della Lucchesia
+  SKIP NOT FAMILY: Sagra delle Ciliegie di Lari
+  SKIP NOT FAMILY: Aperture ed eventi a Fossacava
+  SKIP NOT FAMILY: Calcio storico fiorentino
+  SKIP NOT FAMILY: CertaldoArte26
+  SKIP NOT FAMILY: Firenze Rocks
+  SKIP NOT FAMILY: La Luminara di San Ranieri a Pisa
+  SKIP NOT FAMILY: Una domenica con Leonardo
+  SKIP NOT FAMILY: I Fuochi di San Giovanni a Firenze
+  SKIP NOT FAMILY: Palio della Vittoria
+  SKIP NOT FAMILY: Monteriggioni di torri si corona
+  SKIP NOT FAMILY: Mercantia
+  SKIP NOT FAMILY: BluEtrusco
+  SKIP NOT FAMILY: Pistoia Blues
+  SKIP NOT FAMILY: MusArt Festival
+  SKIP NOT FAMILY: Festival delle Colline
+  SKIP NOT FAMILY: Palio di Siena
+  SKIP NOT FAMILY: La notte di Isabella
+  SKIP NOT FAMILY: Laterina Medievale
+  SKIP NOT FAMILY: Calici di Stelle
+  SKIP NOT FAMILY: Fiera Antiquaria di Arezzo
+  SKIP NOT FAMILY: Effetto Venezia
+  SKIP NOT FAMILY: Palio Marinaro dell'Argentario
+  SKIP NOT FAMILY: Palio dei Ciuchi
+[6/20] Comune Campi Bisenzio
+  JSON-LD events found: 0
+[7/20] Comune Calenzano
+  JSON-LD events found: 0
+[8/20] Comune Calenzano
+  JSON-LD events found: 0
+[9/20] Comune Signa
+  JSON-LD events found: 0
+[10/20] Comune Lastra a Signa
+  JSON-LD events found: 0
+[11/20] Comune Montemurlo
+  JSON-LD events found: 0
+[12/20] Comune Poggio a Caiano
+  JSON-LD events found: 0
+[13/20] Comune Carmignano
+  JSON-LD events found: 0
+[14/20] Comune Agliana
+  JSON-LD events found: 0
+[15/20] Comune Montale
+  JSON-LD events found: 0
+[16/20] Comune Quarrata
+  JSON-LD events found: 0
+[17/20] Comune Empoli
+  JSON-LD events found: 0
+[18/20] Comune Vinci
+  JSON-LD events found: 0
+[19/20] Comune Fucecchio
+  JSON-LD events found: 6
+  SKIP NOT FAMILY: "Spesso il male di vivere ho incontrato", mostra dedicata all&#039;arte di Renato Santini
+  SKIP NOT FAMILY: "World Wide Indro", esposizione dedicata alle opere di Indro Montanelli
+  SKIP NOT FAMILY: "Alberi monumentali d&#039;Italia", mostra fotografica
+  SKIP NOT FAMILY: Scrittori a km zero: presentazione del libro di Giovanni Taddei
+[20/20] Comune Cerreto Guidi
+  JSON-LD events found: 0
+--- SUMMARY ---
+Found: 161
+Duplicates: 16
+Inserted: 0
+Failed sources: 0
+Preview only. Run with --write to insert new events.

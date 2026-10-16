@@ -1,0 +1,3 @@
+{
+  "query": "{ allAssets(locale:\"it\",page:1,config:\"agg_evento_turismo\",params:{filters:[]}) { totalCount pagination { current total rows } assets { id type href title img { src alt } coords { lat lng } ... on Event { when where info { icon text } } } } }"
+}
