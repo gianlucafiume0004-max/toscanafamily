@@ -721,7 +721,22 @@ function extractPratoEvent(html, source, pageUrl) {
 
   const day = Number(dateMatch[1]);
   const month = months[dateMatch[2].toLowerCase()];
-  const year = Number(dateMatch[3]);
+
+  const publishedDate = new Date(feedPublishedAt);
+  const publishedYear = Number.isNaN(
+    publishedDate.getTime()
+  )
+    ? new Date().getFullYear()
+    : publishedDate.getUTCFullYear();
+
+  let year = Number(dateMatch[3] || publishedYear);
+
+  if (
+    year < publishedYear - 1 ||
+    year > publishedYear + 3
+  ) {
+    year = publishedYear;
+  }
 
   const timeMatch = bodyText.match(
     /(?:Inizio ore|Dalle)\\s+(\\d{1,2})(?::|\\.)(\\d{2})/i
@@ -1166,7 +1181,8 @@ function extractRssContentEvent(
   html,
   source,
   pageUrl,
-  feedTitle
+  feedTitle,
+  feedPublishedAt
 ) {
   const rss$ = cheerio.load(
     "<article>" + (rssText || "") + "</article>"
@@ -1184,9 +1200,12 @@ function extractRssContentEvent(
     16000
   );
 
-  const dateMatch = combinedText.match(
-    /\b(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})\b/i
-  );
+  const italianDatePattern =
+    /(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/i;
+
+  const dateMatch =
+    String(feedTitle || "").match(italianDatePattern) ||
+    combinedText.match(italianDatePattern);
 
   if (!feedTitle || !dateMatch) {
     return null;
@@ -1209,7 +1228,26 @@ function extractRssContentEvent(
 
   const day = Number(dateMatch[1]);
   const month = months[dateMatch[2].toLowerCase()];
-  const year = Number(dateMatch[3]);
+
+  const publishedDate = new Date(feedPublishedAt);
+
+  const publishedYear = Number.isNaN(
+    publishedDate.getTime()
+  )
+    ? new Date().getFullYear()
+    : publishedDate.getUTCFullYear();
+
+  let year = dateMatch[3]
+    ? Number(dateMatch[3])
+    : publishedYear;
+
+  if (
+    !Number.isInteger(year) ||
+    year < publishedYear - 1 ||
+    year > publishedYear + 3
+  ) {
+    year = publishedYear;
+  }
 
   const startTimeMatch =
     combinedText.match(
@@ -1322,6 +1360,11 @@ async function collectRssEvents(source) {
       $(item).find("description").first().text() ||
       "";
 
+    const feedPublishedAt = compact(
+      $(item).find("pubDate").first().text(),
+      200
+    );
+
     if (!pageUrl) continue;
 
     try {
@@ -1335,13 +1378,45 @@ async function collectRssEvents(source) {
         feedTitle
       );
 
+      if (event) {
+        const eventYear = new Date(
+          event.starts_on
+        ).getUTCFullYear();
+
+        const publishedDate = new Date(
+          feedPublishedAt
+        );
+
+        const publishedYear = Number.isNaN(
+          publishedDate.getTime()
+        )
+          ? new Date().getFullYear()
+          : publishedDate.getUTCFullYear();
+
+        if (
+          !Number.isFinite(eventYear) ||
+          eventYear < publishedYear - 1 ||
+          eventYear > publishedYear + 3
+        ) {
+          console.log(
+            "  RSS DISCARD IMPLAUSIBLE DATE: " +
+              feedTitle +
+              " | " +
+              event.starts_on
+          );
+
+          event = null;
+        }
+      }
+
       if (!event) {
         event = extractRssContentEvent(
           rssContent,
           html,
           source,
           pageUrl,
-          feedTitle
+          feedTitle,
+          feedPublishedAt
         );
       }
 
