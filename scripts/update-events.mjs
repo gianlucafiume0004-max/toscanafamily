@@ -1447,6 +1447,59 @@ async function collectRssEvents(source) {
 
 
 
+
+async function collectDrupalEvents(source) {
+  const firstHtml = await fetchText(source.url);
+
+  const pages = await collectHtmlPages(
+    source,
+    firstHtml
+  );
+
+  const byKey = new Map();
+
+  console.log(
+    "  Drupal pages collected: " + pages.length
+  );
+
+  for (const page of pages) {
+    const jsonLdNodes =
+      extractJsonLdEvents(page.html);
+
+    for (const node of jsonLdNodes) {
+      const event = normalizeEvent(
+        node,
+        source,
+        page.url
+      );
+
+      if (event) {
+        byKey.set(event.import_key, event);
+      }
+    }
+
+    const htmlEvent = extractHtmlEvent(
+      page.html,
+      source,
+      page.url
+    );
+
+    if (htmlEvent) {
+      byKey.set(
+        htmlEvent.import_key,
+        htmlEvent
+      );
+    }
+  }
+
+  console.log(
+    "  Drupal normalized events: " +
+      byKey.size
+  );
+
+  return [...byKey.values()];
+}
+
 async function collectWordPressEvents(source) {
   const baseUrl = new URL(source.url).origin;
   const maxPages = Number(
@@ -1964,6 +2017,14 @@ async function collectSourceEvents(source) {
       .toLowerCase() === "comune prato"
   ) {
     return await collectPratoApiEvents(source);
+  }
+
+  if (
+    ["drupal", "drupal-events"].includes(
+      String(source.type || "").toLowerCase()
+    )
+  ) {
+    return await collectDrupalEvents(source);
   }
 
   if (
