@@ -741,17 +741,30 @@ function extractHtmlEvent(html, source, pageUrl) {
 function parseMuseDate(value) {
   const months = {
     gennaio: 0,
+    gen: 0,
     febbraio: 1,
+    feb: 1,
     marzo: 2,
+    mar: 2,
     aprile: 3,
+    apr: 3,
     maggio: 4,
+    mag: 4,
     giugno: 5,
+    giu: 5,
     luglio: 6,
+    lug: 6,
     agosto: 7,
+    ago: 7,
     settembre: 8,
+    sett: 8,
+    set: 8,
     ottobre: 9,
+    ott: 9,
     novembre: 10,
-    dicembre: 11
+    nov: 10,
+    dicembre: 11,
+    dic: 11
   };
 
   const match = String(value || "")
@@ -848,8 +861,18 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
   }
 
   const months =
-    "gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|" +
-    "settembre|ottobre|novembre|dicembre";
+    "gennaio|gen|" +
+    "febbraio|feb|" +
+    "marzo|mar|" +
+    "aprile|apr|" +
+    "maggio|mag|" +
+    "giugno|giu|" +
+    "luglio|lug|" +
+    "agosto|ago|" +
+    "settembre|sett|set|" +
+    "ottobre|ott|" +
+    "novembre|nov|" +
+    "dicembre|dic";
 
   const startRegex = new RegExp(
     "(?:dal|da|il|sabato|domenica|lunedì|martedì|mercoledì|" +
@@ -1683,16 +1706,6 @@ async function main() {
 
       for (const event of events) {
         if (isExpiredEvent(event)) {
-          if (
-            String(event.source_name || "")
-              .toLowerCase()
-              .includes("fucini")
-          ) {
-            console.log(
-              `  FUCINI EXPIRED DEBUG: ${event.title} | START=${event.starts_on} | END=${event.ends_on}`
-            );
-          }
-
           console.log(`  SKIP EXPIRED: ${event.title}`);
           continue;
         }
