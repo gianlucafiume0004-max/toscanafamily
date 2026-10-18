@@ -1417,6 +1417,166 @@ async function collectPratoApiEvents(source) {
   return [...byKey.values()];
 }
 
+
+function extractPaginationLinks(html, pageUrl) {
+  const $ = cheerio.load(html);
+  const found = new Set();
+
+  $('a[rel="next"], .pager__item--next a, .pagination a').each(
+    (_, element) => {
+      const href = $(element).attr("href");
+      const url = absoluteUrl(href, pageUrl);
+
+      if (!url || !sameHost(url, pageUrl)) {
+        return;
+      }
+
+      try {
+        const parsed = new URL(url);
+        const current = new URL(pageUrl);
+
+        if (parsed.pathname !== current.pathname) {
+          return;
+        }
+
+        if (!parsed.searchParams.has("page")) {
+          return;
+        }
+
+        found.add(parsed.href.split("#")[0]);
+      } catch {
+        // Collegamento non valido: ignoralo.
+      }
+    }
+  );
+
+  return [...found];
+}
+
+async function collectHtmlPages(source, firstHtml) {
+  const MAX_PAGINATION_PAGES = Number(
+    process.env.MAX_EVENT_PAGES || 20
+  );
+
+  const listingPages = [];
+  const queued = [
+    {
+      url: source.url,
+      html: firstHtml
+    }
+  ];
+
+  const visitedListingUrls = new Set();
+  const eventUrls = new Set();
+
+  while (
+    queued.length > 0 &&
+    visitedListingUrls.size < MAX_PAGINATION_PAGES
+  ) {
+    const current = queued.shift();
+
+    if (
+      !current?.url ||
+      visitedListingUrls.has(current.url)
+    ) {
+      continue;
+    }
+
+    visitedListingUrls.add(current.url);
+
+    let html = current.html;
+
+    if (!html) {
+      try {
+        await sleep(300);
+        html = await fetchText(current.url);
+      } catch (error) {
+        console.warn(
+          "  pagination skip " +
+            current.url +
+            ": " +
+            error.message
+        );
+        continue;
+      }
+    }
+
+    listingPages.push({
+      url: current.url,
+      html
+    });
+
+    for (const eventUrl of extractLinks(html, current.url)) {
+      try {
+        const parsed = new URL(eventUrl);
+        const sourceParsed = new URL(source.url);
+
+        const isPaginationUrl =
+          parsed.pathname === sourceParsed.pathname &&
+          parsed.searchParams.has("page");
+
+        if (!isPaginationUrl) {
+          eventUrls.add(eventUrl);
+        }
+      } catch {
+        // Collegamento non valido: ignoralo.
+      }
+    }
+
+    for (const paginationUrl of extractPaginationLinks(
+      html,
+      current.url
+    )) {
+      if (
+        !visitedListingUrls.has(paginationUrl) &&
+        !queued.some((item) => item.url === paginationUrl)
+      ) {
+        queued.push({
+          url: paginationUrl,
+          html: null
+        });
+      }
+    }
+  }
+
+  console.log(
+    "  HTML listing pages: " +
+      visitedListingUrls.size
+  );
+
+  const detailUrls = [...eventUrls].slice(
+    0,
+    MAX_LINKS_PER_SOURCE
+  );
+
+  console.log(
+    "  HTML event links: " +
+      detailUrls.length
+  );
+
+  const detailPages = [];
+
+  for (const url of detailUrls) {
+    try {
+      await sleep(300);
+
+      detailPages.push({
+        url,
+        html: await fetchText(url)
+      });
+    } catch (error) {
+      console.warn(
+        "  skip " +
+          url +
+          ": " +
+          error.message
+      );
+    }
+  }
+
+  return [...listingPages, ...detailPages];
+}
+
 async function collectSourceEvents(source) {
   if (
     String(source.name || "")
@@ -1448,16 +1608,10 @@ async function collectSourceEvents(source) {
     }
   }
 
-  const pages = [{ url: source.url, html: firstHtml }];
-
-  for (const url of extractLinks(firstHtml, source.url)) {
-    try {
-      await sleep(300);
-      pages.push({ url, html: await fetchText(url) });
-    } catch (error) {
-      console.warn("  skip " + url + ": " + error.message);
-    }
-  }
+  const pages = await collectHtmlPages(
+    source,
+    firstHtml
+  );
 
   const byKey = new Map();
 
