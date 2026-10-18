@@ -574,7 +574,7 @@ function extractPointDate($, selector) {
     String(selector || "").toLowerCase().includes("fine");
 
   if (!field.length) {
-    const points = $("#date-e-orari .point-list");
+    const points = $(".point-list");
 
     if (points.length) {
       field = isEndDate
@@ -667,6 +667,7 @@ function extractHtmlEvent(html, source, pageUrl) {
   const $ = cheerio.load(html);
 
   const title = compact(
+    $('[data-element="event-title"]').first().text() ||
     $('h1[data-element="page-name"]').first().text() ||
     $("h1").first().text() ||
     $('meta[property="og:title"]').attr("content") ||
@@ -687,6 +688,8 @@ function extractHtmlEvent(html, source, pageUrl) {
   );
 
   const description = compact(
+    $('[data-element="event-description"]').first().text() ||
+    $("#article-general").first().text() ||
     $('meta[property="og:description"]').attr("content") ||
     $(".field--name-body").first().text() ||
     $("article .field--type-text-long").first().text() ||
@@ -695,6 +698,7 @@ function extractHtmlEvent(html, source, pageUrl) {
   ) || null;
 
   const address = compact(
+    $(".card-place .card-text").first().text() ||
     $(".field--type-address p").first().text() ||
     $('[itemprop="streetAddress"]').first().text() ||
     "",
