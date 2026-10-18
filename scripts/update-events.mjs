@@ -1092,37 +1092,400 @@ async function updateSource(source, patch) {
 }
 
 
-const FAMILY_KEYWORDS = [
-  "bambin",
-  "famigli",
-  "ragazz",
-  "genitor",
-  "infanzia",
-  "nido",
-  "scuola",
-  "laborator",
-  "lettur",
-  "fiab",
-  "favol",
-  "gioco",
-  "giochi",
-  "ludoteca",
-  "parco",
-  "museo",
-  "spettacolo",
-  "burattin",
-  "marionett",
-  "teatro per famiglie",
-  "festa",
-  "carnevale",
-  "animazione",
-  "giostra",
-  "luna park",
-  "centro estivo",
-  "fattoria didattica",
-  "biblioteca ragazzi",
-  "open day"
+const FAMILY_SCORE_THRESHOLD = Number(
+  process.env.FAMILY_SCORE_THRESHOLD || 5
+);
+
+const FAMILY_SCORE_RULES = [
+  {
+    score: 8,
+    keywords: [
+      "per bambini",
+      "per bambine",
+      "per ragazzi",
+      "per famiglie",
+      "dedicato ai bambini",
+      "dedicata ai bambini",
+      "adatto ai bambini",
+      "adatta ai bambini",
+      "attivita per bambini",
+      "evento per bambini",
+      "festa per bambini",
+      "festa dei bambini",
+      "spettacolo per bambini",
+      "teatro per bambini",
+      "museo per famiglie",
+      "visita per famiglie",
+      "visita guidata per famiglie",
+      "famiglie al museo",
+      "genitori e figli",
+      "mamme e bambini",
+      "papa e bambini"
+    ]
+  },
+  {
+    score: 6,
+    keywords: [
+      "bambin",
+      "famigli",
+      "ragazz",
+      "genitor",
+      "prima infanzia",
+      "infanzia",
+      "piccoli lettori",
+      "0-3 anni",
+      "3-6 anni",
+      "6-11 anni",
+      "11-14 anni",
+      "baby",
+      "kids",
+      "junior"
+    ]
+  },
+  {
+    score: 5,
+    keywords: [
+      "nati per leggere",
+      "f@mu",
+      "famu",
+      "burattin",
+      "marionett",
+      "truccabimbi",
+      "baby dance",
+      "baby party",
+      "raccontastorie",
+      "letture animate",
+      "teatro ragazzi",
+      "museo dei bambini",
+      "caccia al tesoro",
+      "caccia alle uova",
+      "ludoteca",
+      "parco giochi",
+      "baby parking",
+      "psicomotricita"
+    ]
+  },
+  {
+    score: 3,
+    keywords: [
+      "laborator",
+      "biblioteca",
+      "biblioteche",
+      "libreria",
+      "librerie",
+      "lettura",
+      "letture",
+      "fiaba",
+      "fiabe",
+      "favola",
+      "favole",
+      "narrazione",
+      "storytelling",
+      "pinocchio",
+      "atelier",
+      "origami",
+      "fumetto",
+      "argilla",
+      "manualita",
+      "disegno",
+      "scuola",
+      "scuole",
+      "scolastic",
+      "istituto comprensivo",
+      "primaria",
+      "secondaria",
+      "elementar",
+      "scuola media",
+      "scuole medie",
+      "materna",
+      "asilo",
+      "nido",
+      "open day",
+      "orientamento",
+      "doposcuola",
+      "affido",
+      "genitorialita"
+    ]
+  },
+  {
+    score: 2,
+    keywords: [
+      "natale",
+      "babbo natale",
+      "villaggio di natale",
+      "casa di babbo natale",
+      "befana",
+      "epifania",
+      "carnevale",
+      "halloween",
+      "pasqua",
+      "giostra",
+      "giostre",
+      "luna park",
+      "centro estivo",
+      "estate ragazzi",
+      "camp estivo",
+      "summer camp",
+      "campus",
+      "mini basket",
+      "mini volley",
+      "mini rugby",
+      "scuola calcio",
+      "avviamento sportivo",
+      "animazione",
+      "animatore",
+      "animatori",
+      "clown",
+      "giocoleria",
+      "mago",
+      "magia"
+    ]
+  },
+  {
+    score: 1,
+    keywords: [
+      "festa",
+      "fiera",
+      "festival",
+      "spettacolo",
+      "teatro",
+      "museo",
+      "mostra",
+      "mercatino",
+      "mercato",
+      "merenda",
+      "gioco",
+      "giochi",
+      "sport"
+    ]
+  }
 ];
+
+const SUPER_FAMILY_KEYWORDS = [
+  "per bambini",
+  "per bambine",
+  "per bimbi",
+  "per ragazzi",
+  "per famiglie",
+  "dedicato ai bambini",
+  "dedicata ai bambini",
+  "dedicato alle famiglie",
+  "dedicata alle famiglie",
+  "adatto ai bambini",
+  "adatta ai bambini",
+  "attivita per bambini",
+  "evento per bambini",
+  "eventi per bambini",
+  "festa per bambini",
+  "festa dei bambini",
+  "spettacolo per bambini",
+  "teatro per bambini",
+  "teatro ragazzi",
+  "museo per famiglie",
+  "museo dei bambini",
+  "visita per famiglie",
+  "visita guidata per famiglie",
+  "famiglie al museo",
+  "genitori e figli",
+  "mamme e bambini",
+  "papa e bambini",
+
+  "nati per leggere",
+  "piccoli lettori",
+  "letture animate",
+  "raccontastorie",
+  "storie per bambini",
+  "fiabe per bambini",
+  "favole per bambini",
+
+  "burattini",
+  "marionette",
+  "truccabimbi",
+  "baby dance",
+  "baby party",
+  "ludoteca",
+  "ludobus",
+  "bibliobus",
+  "baby parking",
+  "parco giochi",
+  "giochi in piazza",
+  "giochinpiazza",
+  "caccia al tesoro",
+  "caccia alle uova",
+  "psicomotricita",
+
+  "f@mu",
+  "famu",
+
+  "asilo nido",
+  "scuola infanzia",
+  "scuola dell infanzia",
+  "open day nido",
+  "open day infanzia",
+  "open day primaria",
+  "open day scuola",
+
+  "centro estivo",
+  "campus bambini",
+  "camp estivo per bambini",
+  "estate ragazzi",
+
+  "carnevale dei bambini",
+  "carnevale dei ragazzi",
+  "halloween per bambini",
+  "halloween per famiglie",
+  "natale per bambini",
+  "natale per famiglie",
+  "villaggio di natale",
+  "casa di babbo natale",
+  "babbo natale",
+  "befana in piazza",
+
+  "notte dei bambini",
+  "giornata dei bambini",
+  "diritti dei bambini",
+  "festa della mamma",
+  "festa del papa",
+  "festa dei nonni",
+
+  "mini basket",
+  "mini volley",
+  "mini rugby",
+  "scuola calcio",
+  "sport per bambini",
+
+  "affido familiare",
+  "genitorialita",
+  "prima infanzia"
+];
+
+function hasSuperFamilySignal(event) {
+  const text = normalizeSearchText(
+    searchableEventText(event)
+  );
+
+  return SUPER_FAMILY_KEYWORDS.some((keyword) =>
+    text.includes(normalizeSearchText(keyword))
+  );
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function calculateFamilyScore(event) {
+  const title = normalizeSearchText(event.title);
+
+  const details = normalizeSearchText(
+    [
+      event.description,
+      event.location,
+      event.city,
+      event.source_name
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  const fullText = (title + " " + details).trim();
+  const matchedKeywords = [];
+  const alreadyMatched = new Set();
+  let score = 0;
+
+  for (const rule of FAMILY_SCORE_RULES) {
+    for (const keyword of rule.keywords) {
+      const normalizedKeyword = normalizeSearchText(keyword);
+
+      if (
+        !normalizedKeyword ||
+        alreadyMatched.has(normalizedKeyword) ||
+        !fullText.includes(normalizedKeyword)
+      ) {
+        continue;
+      }
+
+      const inTitle = title.includes(normalizedKeyword);
+      const points = inTitle ? rule.score * 2 : rule.score;
+
+      score += points;
+      alreadyMatched.add(normalizedKeyword);
+
+      matchedKeywords.push({
+        keyword,
+        points,
+        inTitle
+      });
+    }
+  }
+
+  const strongSignals = [
+    "per bambini",
+    "per bambine",
+    "per ragazzi",
+    "per famiglie",
+    "dedicato ai bambini",
+    "dedicata ai bambini",
+    "attivita per bambini",
+    "evento per bambini",
+    "festa per bambini",
+    "spettacolo per bambini",
+    "teatro per bambini",
+    "famiglie al museo",
+    "genitori e figli",
+    "bambin",
+    "famigli",
+    "ragazz",
+    "prima infanzia",
+    "piccoli lettori",
+    "nati per leggere",
+    "burattin",
+    "marionett",
+    "truccabimbi",
+    "baby dance",
+    "baby party",
+    "raccontastorie",
+    "letture animate",
+    "teatro ragazzi",
+    "museo dei bambini",
+    "caccia al tesoro",
+    "caccia alle uova",
+    "ludoteca",
+    "parco giochi",
+    "baby parking",
+    "psicomotricita",
+    "pinocchio",
+    "asilo",
+    "nido",
+    "scuola materna",
+    "affido",
+    "centro estivo",
+    "estate ragazzi"
+  ];
+
+  const hasStrongSignal = strongSignals.some((signal) =>
+    fullText.includes(normalizeSearchText(signal))
+  );
+
+  /*
+   * Biblioteca, libreria, lettura, scuola, museo, laboratorio,
+   * Natale, Halloween e festa sono termini di contesto.
+   * Senza almeno un segnale forte non bastano per importare.
+   */
+  if (!hasStrongSignal) {
+    score = Math.min(score, FAMILY_SCORE_THRESHOLD - 1);
+  }
+
+  return {
+    score: Math.min(score, 30),
+    matchedKeywords,
+    hasStrongSignal
+  };
+}
 
 const EXCLUDED_KEYWORDS = [
   "consiglio comunale",
@@ -1148,13 +1511,33 @@ function searchableEventText(event) {
 }
 
 function isFamilyEvent(event) {
-  const text = searchableEventText(event);
+  const text = normalizeSearchText(searchableEventText(event));
 
-  if (EXCLUDED_KEYWORDS.some((keyword) => text.includes(keyword))) {
+  const excludedKeyword = EXCLUDED_KEYWORDS.find((keyword) =>
+    text.includes(normalizeSearchText(keyword))
+  );
+
+  if (excludedKeyword) {
+    event.family_score = 0;
+    event.family_matches = [];
+    event.family_exclusion = excludedKeyword;
     return false;
   }
 
-  return FAMILY_KEYWORDS.some((keyword) => text.includes(keyword));
+  const result = calculateFamilyScore(event);
+
+  event.family_score = result.score;
+  event.family_matches = result.matchedKeywords.map(
+    (item) => item.keyword
+  );
+  event.family_exclusion = null;
+
+  event.family_super = hasSuperFamilySignal(event);
+
+  return (
+    event.family_super ||
+    result.score >= FAMILY_SCORE_THRESHOLD
+  );
 }
 
 function isExpiredEvent(event) {
@@ -1186,6 +1569,7 @@ async function main() {
     .select("*")
     .eq("category", "events")
     .eq("active", true)
+
     .order("id");
 
   if (error) throw error;
@@ -1212,9 +1596,27 @@ async function main() {
         }
 
         if (!isFamilyEvent(event)) {
-          console.log(`  SKIP NOT FAMILY: ${event.title}`);
+          console.log(
+            "  SKIP NOT FAMILY: " +
+            event.title +
+            " | SCORE=" +
+            (event.family_score || 0) +
+            (event.family_exclusion
+              ? " | EXCLUDED=" + event.family_exclusion
+              : "")
+          );
           continue;
         }
+
+        console.log(
+          "  FAMILY SCORE: " +
+          event.family_score +
+          " | " +
+          event.title +
+          " | MATCHES=" +
+          event.family_matches.join(", ") +
+          (event.family_super ? " | SUPER=YES" : "")
+        );
 
         if (await eventExists(event)) {
           duplicates += 1;
