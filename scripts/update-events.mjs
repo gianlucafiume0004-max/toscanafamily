@@ -2292,24 +2292,15 @@ function isFamilyEvent(event) {
 }
 
 function isExpiredEvent(event) {
-  const comparisonDate = new Date(event.ends_on || event.starts_on);
-  const startDate = new Date(event.starts_on);
+  const expiryDate = new Date(
+    event.ends_on || event.starts_on
+  );
 
-  if (
-    !Number.isNaN(startDate.getTime()) &&
-    startDate.getUTCFullYear() < new Date().getUTCFullYear()
-  ) {
+  if (Number.isNaN(expiryDate.getTime())) {
     return true;
   }
 
-  if (Number.isNaN(comparisonDate.getTime())) {
-    return true;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return comparisonDate.getTime() < today.getTime();
+  return expiryDate.getTime() < Date.now();
 }
 
 async function main() {
