@@ -639,15 +639,26 @@ function extractPointDate($, selector) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const yearMatch =
-    dateSectionText.match(/\b(20\d{2})\b/) ||
-    pageText.match(/\b(20\d{2})\b/);
+  const labelPattern = isEndDate
+    ? /Data\s+fine\s*:?\s*.{0,100}?\b(20\d{2})\b/i
+    : /Data\s+inizio\s*:?\s*.{0,100}?\b(20\d{2})\b/i;
+
+  const labeledYearMatch = pageText.match(labelPattern);
+  const localYearMatch = field
+    .parent()
+    .text()
+    .match(/\b(20\d{2})\b/);
+
+  const sectionYearMatch =
+    dateSectionText.match(/\b(20\d{2})\b/);
 
   const year =
     Number(
       field.find(".point-year").first().text().trim()
     ) ||
-    Number(yearMatch?.[1]) ||
+    Number(labeledYearMatch?.[1]) ||
+    Number(localYearMatch?.[1]) ||
+    Number(sectionYearMatch?.[1]) ||
     new Date().getFullYear();
 
   if (!day || month === undefined || !year) {
