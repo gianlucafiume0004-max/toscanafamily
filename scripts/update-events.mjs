@@ -796,6 +796,12 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
       "comune.calenzano.fi.it"
     );
 
+  const isFucini =
+    String(source.name || "").toLowerCase().includes("fucini") ||
+    String(pageUrl || "").includes(
+      "biblioteca.comune.empoli.fi.it"
+    );
+
   const articleText = compact(
     $("article").first().text() ||
     $(".entry-content").first().text() ||
@@ -808,7 +814,21 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
 
   let dateText;
 
-  if (isRagionieri || isCalenzano) {
+  if (isFucini) {
+    /*
+     * Nelle pagine Fucini, article/main contengono anche gli
+     * articoli correlati. Cerchiamo la data solo nel contenuto
+     * principale dell'evento per evitare date estranee.
+     */
+    dateText = compact(
+      $(".e-content").first().text() ||
+      $(".entry-content").first().text() ||
+      $(".post-content").first().text() ||
+      $('meta[property="og:description"]').attr("content") ||
+      "",
+      15000
+    );
+  } else if (isRagionieri || isCalenzano) {
     dateText = compact(
       [
         $(".data-evento").first().text(),
@@ -879,6 +899,62 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
       dateText.match(singleRegex);
 
     endMatch = dateText.match(endRegex);
+  } else if (isFucini) {
+    const publishedTime =
+      $('meta[property="article:published_time"]').attr("content") ||
+      $('meta[property="article:modified_time"]').attr("content") ||
+      "";
+
+    const publishedYearMatch =
+      String(publishedTime).match(/\b(20\d{2})\b/);
+
+    const pageYearMatch =
+      dateText.match(/\b(20\d{2})\b/);
+
+    const referenceYear =
+      Number(publishedYearMatch?.[1]) ||
+      Number(pageYearMatch?.[1]) ||
+      new Date().getFullYear();
+
+    const fuciniStartRegex = new RegExp(
+      "(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|" +
+      "giovedi|giovedì|venerdi|venerdì|sabato|domenica|il)?\\s*" +
+      "(\\d{1,2}\\s+(?:" + months + ")(?:\\s+20\\d{2})?)",
+      "i"
+    );
+
+    const fuciniRangeRegex = new RegExp(
+      "(?:dal|da)\\s+(\\d{1,2})\\s+(?:al|a)\\s+" +
+      "(\\d{1,2})\\s+(" + months + ")(?:\\s+(20\\d{2}))?",
+      "i"
+    );
+
+    const rangeMatch = dateText.match(fuciniRangeRegex);
+    const singleFuciniMatch = dateText.match(fuciniStartRegex);
+
+    if (rangeMatch) {
+      const rangeYear =
+        Number(rangeMatch[4]) || referenceYear;
+
+      startMatch = [
+        rangeMatch[0],
+        rangeMatch[1] + " " + rangeMatch[3] + " " + rangeYear
+      ];
+
+      endMatch = [
+        rangeMatch[0],
+        rangeMatch[2] + " " + rangeMatch[3] + " " + rangeYear
+      ];
+    } else if (singleFuciniMatch) {
+      const value = singleFuciniMatch[1];
+
+      startMatch = [
+        singleFuciniMatch[0],
+        /\\b20\\d{2}\\b/.test(value)
+          ? value
+          : value + " " + referenceYear
+      ];
+    }
   } else {
     startMatch = dateText.match(
       /dal?\s+(\d{1,2}\s+[a-zàèéìòù]+\s+\d{2,4})/i
@@ -905,6 +981,15 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
         title +
         " | testo: " +
         dateText.slice(0, 250)
+      );
+    }
+
+    if (isFucini) {
+      console.log(
+        "  FUCINI DATE NOT FOUND: " +
+        title +
+        " | testo: " +
+        dateText.slice(0, 350)
       );
     }
 
@@ -1564,13 +1649,20 @@ function isExpiredEvent(event) {
 async function main() {
   console.log(WRITE ? "EVENT IMPORT: WRITE MODE" : "EVENT IMPORT: PREVIEW MODE");
 
-  const { data: sources, error } = await supabase
+  let query = supabase
     .from("sources")
     .select("*")
     .eq("category", "events")
-    .eq("active", true)
+    .eq("active", true);
 
-    .order("id");
+  const SOURCE_FILTER = process.env.SOURCE_FILTER;
+
+  if (SOURCE_FILTER) {
+    query = query.eq("name", SOURCE_FILTER);
+  }
+
+  const { data: sources, error } =
+    await query.order("id");
 
   if (error) throw error;
   console.log(`Active event sources: ${sources.length}`);
@@ -1591,6 +1683,16 @@ async function main() {
 
       for (const event of events) {
         if (isExpiredEvent(event)) {
+          if (
+            String(event.source_name || "")
+              .toLowerCase()
+              .includes("fucini")
+          ) {
+            console.log(
+              `  FUCINI EXPIRED DEBUG: ${event.title} | START=${event.starts_on} | END=${event.ends_on}`
+            );
+          }
+
           console.log(`  SKIP EXPIRED: ${event.title}`);
           continue;
         }
