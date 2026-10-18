@@ -1449,15 +1449,40 @@ async function collectRssEvents(source) {
 
 async function collectWordPressEvents(source) {
   const baseUrl = new URL(source.url).origin;
-  const maxPages = Number(process.env.MAX_WORDPRESS_PAGES || 10);
+  const maxPages = Number(
+    process.env.MAX_WORDPRESS_PAGES || 3
+  );
+
+  const lookbackDays = Number(
+    process.env.WORDPRESS_LOOKBACK_DAYS || 180
+  );
+
+  const afterDate = new Date(
+    Date.now() - lookbackDays * 24 * 60 * 60 * 1000
+  );
+
   const byKey = new Map();
 
+  console.log(
+    "  WordPress posts after: " +
+      afterDate.toISOString()
+  );
+
   for (let page = 1; page <= maxPages; page += 1) {
+    const params = new URLSearchParams({
+      per_page: "100",
+      page: String(page),
+      after: afterDate.toISOString(),
+      order: "desc",
+      orderby: "date",
+      status: "publish",
+      _embed: "1"
+    });
+
     const apiUrl =
       baseUrl +
-      "/wp-json/wp/v2/posts?per_page=100&page=" +
-      page +
-      "&_embed=1";
+      "/wp-json/wp/v2/posts?" +
+      params.toString();
 
     const response = await fetch(apiUrl, {
       headers: {
