@@ -1160,6 +1160,143 @@ function extractMuseEvent(html, source, pageUrl, feedTitle) {
   return event;
 }
 
+
+function extractRssContentEvent(
+  rssText,
+  html,
+  source,
+  pageUrl,
+  feedTitle
+) {
+  const rss$ = cheerio.load(
+    "<article>" + (rssText || "") + "</article>"
+  );
+
+  const page$ = cheerio.load(html || "");
+
+  const combinedText = compact(
+    [
+      feedTitle,
+      rss$("article").text(),
+      page$("article").first().text(),
+      page$("main").first().text()
+    ].filter(Boolean).join(" "),
+    16000
+  );
+
+  const dateMatch = combinedText.match(
+    /\b(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})\b/i
+  );
+
+  if (!feedTitle || !dateMatch) {
+    return null;
+  }
+
+  const months = {
+    gennaio: 0,
+    febbraio: 1,
+    marzo: 2,
+    aprile: 3,
+    maggio: 4,
+    giugno: 5,
+    luglio: 6,
+    agosto: 7,
+    settembre: 8,
+    ottobre: 9,
+    novembre: 10,
+    dicembre: 11
+  };
+
+  const day = Number(dateMatch[1]);
+  const month = months[dateMatch[2].toLowerCase()];
+  const year = Number(dateMatch[3]);
+
+  const startTimeMatch =
+    combinedText.match(
+      /(?:dalle\s+ore|dalle|inizio\s+ore|ore)\s*(\d{1,2})(?::|\.)(\d{2})/i
+    );
+
+  const endTimeMatch =
+    combinedText.match(
+      /(?:alle\s+ore|alle|fine\s+ore)\s*(\d{1,2})(?::|\.)(\d{2})/i
+    );
+
+  const startHour = Number(startTimeMatch?.[1] || 12);
+  const startMinute = Number(startTimeMatch?.[2] || 0);
+
+  const startDate = new Date(
+    Date.UTC(
+      year,
+      month,
+      day,
+      startHour,
+      startMinute,
+      0
+    )
+  );
+
+  if (Number.isNaN(startDate.getTime())) {
+    return null;
+  }
+
+  let endsOn = null;
+
+  if (endTimeMatch) {
+    const endDate = new Date(
+      Date.UTC(
+        year,
+        month,
+        day,
+        Number(endTimeMatch[1]),
+        Number(endTimeMatch[2]),
+        0
+      )
+    );
+
+    if (!Number.isNaN(endDate.getTime())) {
+      endsOn = endDate.toISOString();
+    }
+  }
+
+  const locationMatch = combinedText.match(
+    /\b(?:presso|luogo|in)\s+((?:piazza|via|viale|parco|biblioteca|teatro|museo|centro)[^.;]{2,180})/i
+  );
+
+  const location =
+    compact(locationMatch?.[1] || "", 500) || null;
+
+  const image =
+    absoluteUrl(
+      page$('meta[property="og:image"]').attr("content") ||
+      page$("article img").first().attr("src") ||
+      rss$("img").first().attr("src"),
+      pageUrl
+    );
+
+  const event = {
+    title: feedTitle,
+    city: source.comune || null,
+    location,
+    starts_on: startDate.toISOString(),
+    ends_on: endsOn,
+    description:
+      compact(
+        rss$("article").text() ||
+        page$('meta[property="og:description"]').attr("content") ||
+        page$("article").first().text() ||
+        "",
+        4000
+      ) || null,
+    source_url: pageUrl,
+    image_url: image,
+    address: location,
+    source_name: source.name
+  };
+
+  event.import_key = eventKey(event);
+  return event;
+}
+
 async function collectRssEvents(source) {
   const xml = await fetchText(source.url);
   const $ = cheerio.load(xml, { xmlMode: true });
@@ -1170,8 +1307,20 @@ async function collectRssEvents(source) {
   console.log("  RSS items found: " + items.length);
 
   for (const item of items) {
-    const feedTitle = compact($(item).find("title").first().text(), 300);
-    const pageUrl = compact($(item).find("link").first().text(), 1000);
+    const feedTitle = compact(
+      $(item).find("title").first().text(),
+      300
+    );
+
+    const pageUrl = compact(
+      $(item).find("link").first().text(),
+      1000
+    );
+
+    const rssContent =
+      $(item).find("content\\:encoded").first().text() ||
+      $(item).find("description").first().text() ||
+      "";
 
     if (!pageUrl) continue;
 
@@ -1179,17 +1328,36 @@ async function collectRssEvents(source) {
       await sleep(300);
 
       const html = await fetchText(pageUrl);
-      const event = extractMuseEvent(
+      let event = extractMuseEvent(
         html,
         source,
         pageUrl,
         feedTitle
       );
 
+      if (!event) {
+        event = extractRssContentEvent(
+          rssContent,
+          html,
+          source,
+          pageUrl,
+          feedTitle
+        );
+      }
+
       if (event) {
         byKey.set(event.import_key, event);
+        console.log(
+          "  RSS EVENT: " +
+            event.title +
+            " | " +
+            event.starts_on
+        );
       } else {
-        console.log("  RSS SKIP NO EVENT DATE: " + feedTitle);
+        console.log(
+          "  RSS SKIP NO EVENT DATE: " +
+            feedTitle
+        );
       }
     } catch (error) {
       console.warn(
