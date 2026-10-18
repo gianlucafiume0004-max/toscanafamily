@@ -674,6 +674,98 @@ function extractPointDate($, selector) {
     : date.toISOString();
 }
 
+
+function extractPratoEvent(html, source, pageUrl) {
+  if (!String(pageUrl || "").includes("tempolibero2.comune.prato.it/event/")) {
+    return null;
+  }
+
+  const $ = cheerio.load(html);
+
+  const title = compact(
+    $("h1").filter((_, element) => {
+      const value = compact($(element).text(), 300).toLowerCase();
+      return value && value !== "cartellone eventi" && value !== "eventi";
+    }).first().text() ||
+    $('meta[property="og:title"]').attr("content") ||
+    $("title").first().text(),
+    300
+  ).replace(/\\s*-\\s*tempolibero.*$/i, "");
+
+  const bodyText = compact($("body").text(), 12000);
+
+  if (!title || !/bambin|ragazz|famigl/i.test(bodyText)) {
+    return null;
+  }
+
+  const dateMatch = bodyText.match(
+    /(?:Data\\s+)?(\\d{1,2})\\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\\s+(\\d{4})/i
+  );
+
+  if (!dateMatch) return null;
+
+  const months = {
+    gennaio: 0,
+    febbraio: 1,
+    marzo: 2,
+    aprile: 3,
+    maggio: 4,
+    giugno: 5,
+    luglio: 6,
+    agosto: 7,
+    settembre: 8,
+    ottobre: 9,
+    novembre: 10,
+    dicembre: 11
+  };
+
+  const day = Number(dateMatch[1]);
+  const month = months[dateMatch[2].toLowerCase()];
+  const year = Number(dateMatch[3]);
+
+  const timeMatch = bodyText.match(
+    /(?:Inizio ore|Dalle)\\s+(\\d{1,2})(?::|\\.)(\\d{2})/i
+  );
+
+  const hour = Number(timeMatch?.[1] || 12);
+  const minute = Number(timeMatch?.[2] || 0);
+  const startDate = new Date(Date.UTC(year, month, day, hour, minute));
+
+  if (Number.isNaN(startDate.getTime())) return null;
+
+  const placeMatch = bodyText.match(
+    /Luogo\\s+(.+?)(?=\\s+(?:Ingresso|Prenotazione|Maggiori informazioni|Organizzato da))/i
+  );
+
+  const address = compact(placeMatch?.[1] || "", 500) || null;
+
+  const event = {
+    title,
+    city: source.comune || "Prato",
+    location: address,
+    starts_on: startDate.toISOString(),
+    ends_on: null,
+    description: compact(
+      $('meta[property="og:description"]').attr("content") ||
+      $("main").text() ||
+      $("article").text() ||
+      "",
+      4000
+    ) || null,
+    source_url: pageUrl,
+    image_url: absoluteUrl(
+      $('meta[property="og:image"]').attr("content") ||
+      $("main img").first().attr("src"),
+      pageUrl
+    ),
+    address,
+    source_name: source.name
+  };
+
+  event.import_key = eventKey(event);
+  return event;
+}
+
 function extractHtmlEvent(html, source, pageUrl) {
   const $ = cheerio.load(html);
 
@@ -1110,7 +1202,229 @@ async function collectRssEvents(source) {
   return [...byKey.values()];
 }
 
+
+async function collectPratoApiEvents(source) {
+  const baseUrl = "https://tempolibero2.comune.prato.it";
+  const eventPageUrl = baseUrl + "/event";
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS
+  );
+
+  let pageResponse;
+
+  try {
+    pageResponse = await fetch(eventPageUrl, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "text/html,application/xhtml+xml"
+      },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!pageResponse.ok) {
+    throw new Error(
+      "Prato page HTTP " + pageResponse.status
+    );
+  }
+
+  const pageHtml = await pageResponse.text();
+
+  const page$ = cheerio.load(pageHtml);
+
+  const token =
+    page$('meta[name="csrf-token"]').attr("content") ||
+    page$('input[name="_token"]').attr("value");
+
+  if (!token) {
+    throw new Error("Prato CSRF token non trovato");
+  }
+
+  const cookie =
+    typeof pageResponse.headers.getSetCookie === "function"
+      ? pageResponse.headers
+          .getSetCookie()
+          .map((value) => value.split(";")[0])
+          .join("; ")
+      : String(
+          pageResponse.headers.get("set-cookie") || ""
+        )
+          .split(",")
+          .map((value) => value.trim().split(";")[0])
+          .filter(Boolean)
+          .join("; ");
+
+  const byKey = new Map();
+  let currentPage = 1;
+  let totalPages = 1;
+
+  do {
+    const body = new URLSearchParams({
+      page: String(currentPage),
+      per_page: "40",
+      _token: token
+    });
+
+    const apiController = new AbortController();
+    const apiTimeout = setTimeout(
+      () => apiController.abort(),
+      REQUEST_TIMEOUT_MS
+    );
+
+    let apiResponse;
+
+    try {
+      apiResponse = await fetch(
+        baseUrl + "/ajax/events",
+        {
+          method: "POST",
+          headers: {
+            "User-Agent": USER_AGENT,
+            Accept: "application/json",
+            "Content-Type":
+              "application/x-www-form-urlencoded;charset=UTF-8",
+            "X-CSRF-TOKEN": token,
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: eventPageUrl,
+            Cookie: cookie
+          },
+          body,
+          signal: apiController.signal
+        }
+      );
+    } finally {
+      clearTimeout(apiTimeout);
+    }
+
+    if (!apiResponse.ok) {
+      throw new Error(
+        "Prato API HTTP " + apiResponse.status
+      );
+    }
+
+    const data = await apiResponse.json();
+    totalPages = Math.max(1, Number(data.pages || 1));
+
+    const items = Array.isArray(data.datas)
+      ? data.datas
+      : [];
+
+    console.log(
+      "  Prato API page " +
+        currentPage +
+        "/" +
+        totalPages +
+        ": " +
+        items.length +
+        " items"
+    );
+
+    for (const item of items) {
+      if (String(item.type || "") !== "appointment") {
+        continue;
+      }
+
+      const resource = item.resource || {};
+      const categories = Array.isArray(resource.categories)
+        ? resource.categories
+        : [];
+
+      const isChildrenEvent = categories.some(
+        (category) =>
+          String(category?.title || "")
+            .toLowerCase()
+            .includes("bambin")
+      );
+
+      if (!isChildrenEvent) {
+        continue;
+      }
+
+      const title = compact(
+        resource.title || "",
+        300
+      );
+
+      const startsOn = validDate(
+        item.dates?.[0] ||
+        item.start ||
+        resource.start
+      );
+
+      if (!title || !startsOn) {
+        continue;
+      }
+
+      const address = compact(
+        resource.poi ||
+        resource.address ||
+        "",
+        500
+      ) || null;
+
+      const description = compact(
+        resource.description ||
+        resource.short_description ||
+        resource.subtitle ||
+        "",
+        4000
+      ) || null;
+
+      const sourceUrl =
+        absoluteUrl(item.url, baseUrl) ||
+        eventPageUrl;
+
+      const event = {
+        title,
+        city: source.comune || "Prato",
+        location: address,
+        starts_on: startsOn,
+        ends_on: validDate(
+          item.end ||
+          item.end_date ||
+          resource.end
+        ),
+        description,
+        source_url: sourceUrl,
+        image_url: absoluteUrl(
+          resource.image_preview ||
+          resource.image ||
+          "",
+          baseUrl
+        ),
+        address,
+        source_name: source.name
+      };
+
+      event.import_key = eventKey(event);
+      byKey.set(event.import_key, event);
+    }
+
+    currentPage += 1;
+    await sleep(250);
+  } while (currentPage <= totalPages);
+
+  console.log(
+    "  Prato Bambini normalized events: " +
+      byKey.size
+  );
+
+  return [...byKey.values()];
+}
+
 async function collectSourceEvents(source) {
+  if (
+    String(source.name || "")
+      .toLowerCase() === "comune prato"
+  ) {
+    return await collectPratoApiEvents(source);
+  }
+
   if (String(source.type || "").toLowerCase() === "rss") {
     return await collectRssEvents(source);
   }
@@ -1153,6 +1467,13 @@ async function collectSourceEvents(source) {
     for (const node of jsonLdNodes) {
       const event = normalizeEvent(node, source, page.url);
       if (event) byKey.set(event.import_key, event);
+    }
+
+    const pratoEvent = extractPratoEvent(page.html, source, page.url);
+
+    if (pratoEvent) {
+      byKey.set(pratoEvent.import_key, pratoEvent);
+      continue;
     }
 
     const htmlEvent = extractHtmlEvent(page.html, source, page.url);
@@ -1710,7 +2031,15 @@ async function main() {
           continue;
         }
 
-        if (!isFamilyEvent(event)) {
+        const isPratoChildrenEvent =
+          String(source.name || "").toLowerCase() === "comune prato";
+
+        if (isPratoChildrenEvent) {
+          event.family_score = 100;
+          event.family_matches = ["categoria Bambini"];
+          event.family_super = true;
+          event.family_exclusion = null;
+        } else if (!isFamilyEvent(event)) {
           console.log(
             "  SKIP NOT FAMILY: " +
             event.title +
