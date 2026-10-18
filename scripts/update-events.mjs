@@ -1448,6 +1448,327 @@ async function collectRssEvents(source) {
 
 
 
+
+function parseDrupalNewsDateParts(
+  paragraph,
+  defaultYear
+) {
+  const months = {
+    gennaio: 0,
+    febbraio: 1,
+    marzo: 2,
+    aprile: 3,
+    maggio: 4,
+    giugno: 5,
+    luglio: 6,
+    agosto: 7,
+    settembre: 8,
+    ottobre: 9,
+    novembre: 10,
+    dicembre: 11
+  };
+
+  const normalized = compact(
+    String(paragraph || "")
+      .replace(/[–—]/g, "-"),
+    4000
+  );
+
+  const dateMatch = normalized.match(
+    /^(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})(?:\s*(?:,|e|-)\s*(\d{1,2}))?\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/i
+  );
+
+  if (dateMatch === null) {
+    return [];
+  }
+
+  const firstDay = Number(dateMatch[1]);
+  const secondDay = dateMatch[2]
+    ? Number(dateMatch[2])
+    : null;
+
+  const month =
+    months[dateMatch[3].toLowerCase()];
+
+  const year = Number(
+    dateMatch[4] || defaultYear
+  );
+
+  const timeMatch = normalized.match(
+    /\b(?:dalle\s+ore|dalle|alle\s+ore|alle|ore)\s*(\d{1,2})(?:\d{2})?/i
+  );
+
+  const hour = Number(timeMatch?.[1] || 12);
+  const minute = Number(timeMatch?.[2] || 0);
+
+  const days = secondDay
+    ? [firstDay, secondDay]
+    : [firstDay];
+
+  return days
+    .map((day) => {
+      const date = new Date(
+        Date.UTC(
+          year,
+          month,
+          day,
+          hour,
+          minute,
+          0
+        )
+      );
+
+      return Number.isNaN(date.getTime())
+        ? null
+        : date.toISOString();
+    })
+    .filter(Boolean);
+}
+
+function extractDrupalNewsEvents(
+  html,
+  source,
+  pageUrl
+) {
+  const $ = cheerio.load(html);
+
+  const articleTitle = compact(
+    $("h1").first().text() ||
+      $('meta[property="og:title"]').attr("content") ||
+      $("title").first().text(),
+    300
+  );
+
+  const articleText = compact(
+    $(".field--name-body").first().text() ||
+      $("article").first().text() ||
+      $("main").first().text(),
+    16000
+  );
+
+  const relevantText =
+    articleTitle + " " + articleText;
+
+  if (
+    /\b(biblioteca|bambin|ragazz|famigli|lettur|laborator|burattin|favol|storie)\b/i.test(
+      relevantText
+    ) === false
+  ) {
+    return [];
+  }
+
+  const publicationText = compact(
+    $("time").first().attr("datetime") ||
+      $("time").first().text() ||
+      $('[data-element="news-publication-date"]')
+        .first()
+        .text() ||
+      "",
+    200
+  );
+
+  const yearMatch =
+    publicationText.match(/\b(20\d{2})\b/) ||
+    articleText.match(
+      /\b(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(20\d{2})\b/i
+    ) ||
+    articleTitle.match(/\b(20\d{2})\b/);
+
+  const defaultYear = Number(
+    yearMatch?.[1] ||
+      new Date().getUTCFullYear()
+  );
+
+  const paragraphs = [];
+
+  $(".field--name-body p, article p, main p").each(
+    (_, element) => {
+      const value = compact(
+        $(element).text(),
+        4000
+      );
+
+      if (value) {
+        paragraphs.push(value);
+      }
+    }
+  );
+
+  if (paragraphs.length === 0) {
+    paragraphs.push(
+      ...articleText
+        .split(/\n+/)
+        .map((value) => compact(value, 4000))
+        .filter(Boolean)
+    );
+  }
+
+  const events = [];
+
+  for (const paragraph of paragraphs) {
+    const dates = parseDrupalNewsDateParts(
+      paragraph,
+      defaultYear
+    );
+
+    if (dates.length === 0) {
+      continue;
+    }
+
+    const titlePart = compact(
+      paragraph
+        .replace(
+          /^(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*\d{1,2}(?:\s*(?:,|e|-)\s*\d{1,2})?\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+\d{4})?\s*,?\s*(?:alle\s+)?(?:ore\s+)?\d{0,2}(?:[:.,]\d{2})?\s*:?\s*/i,
+          ""
+        )
+        .split(/\.\s/)[0],
+      300
+    );
+
+    const eventTitle = compact(
+      String(titlePart || articleTitle)
+        .replace(/^[\s,;:'"]+/, "")
+        .replace(/[\s,;:'"]+$/, ""),
+      300
+    );
+
+    for (const startsOn of dates) {
+      const event = {
+        title: eventTitle,
+        city: source.comune || "Scandicci",
+        location: "Biblioteca di Scandicci",
+        starts_on: startsOn,
+        ends_on: null,
+        description: paragraph,
+        source_url: pageUrl,
+        image_url:
+          absoluteUrl(
+            $('meta[property="og:image"]').attr(
+              "content"
+            ),
+            pageUrl
+          ) || null,
+        address:
+          "Via Roma 38/A, Scandicci",
+        source_name: source.name
+      };
+
+      event.import_key = eventKey(event);
+      events.push(event);
+    }
+  }
+
+  return events;
+}
+
+async function collectDrupalNewsEvents(source) {
+  const maxPages = Number(
+    process.env.MAX_DRUPAL_NEWS_PAGES || 3
+  );
+
+  const articleUrls = new Set();
+
+  for (
+    let pageNumber = 0;
+    pageNumber < maxPages;
+    pageNumber += 1
+  ) {
+    const listingUrl = new URL(source.url);
+
+    if (pageNumber > 0) {
+      listingUrl.searchParams.set(
+        "page",
+        String(pageNumber)
+      );
+    }
+
+    let html;
+
+    try {
+      html = await fetchText(
+        listingUrl.href
+      );
+    } catch (error) {
+      console.warn(
+        "  Drupal news listing skip " +
+          listingUrl.href +
+          ": " +
+          error.message
+      );
+
+      continue;
+    }
+
+    const $ = cheerio.load(html);
+
+    $('a[href*="/novita/notizie/"]').each(
+      (_, element) => {
+        const href = $(element).attr("href");
+
+        const url = absoluteUrl(
+          href,
+          listingUrl.href
+        );
+
+        if (
+          url &&
+          url !== source.url &&
+          /\/novita\/notizie\/[^/?#]+/i.test(url)
+        ) {
+          articleUrls.add(
+            url.split("#")[0]
+          );
+        }
+      }
+    );
+
+    await sleep(250);
+  }
+
+  console.log(
+    "  Drupal news links: " +
+      articleUrls.size
+  );
+
+  const byKey = new Map();
+
+  for (const pageUrl of articleUrls) {
+    try {
+      await sleep(300);
+
+      const html = await fetchText(pageUrl);
+
+      const events =
+        extractDrupalNewsEvents(
+          html,
+          source,
+          pageUrl
+        );
+
+      for (const event of events) {
+        byKey.set(
+          event.import_key,
+          event
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "  Drupal news skip " +
+          pageUrl +
+          ": " +
+          error.message
+      );
+    }
+  }
+
+  console.log(
+    "  Drupal news normalized events: " +
+      byKey.size
+  );
+
+  return [...byKey.values()];
+}
+
 async function collectDrupalEvents(source) {
   const firstHtml = await fetchText(source.url);
 
@@ -2017,6 +2338,14 @@ async function collectSourceEvents(source) {
       .toLowerCase() === "comune prato"
   ) {
     return await collectPratoApiEvents(source);
+  }
+
+  if (
+    ["drupal-news", "drupal-news-events"].includes(
+      String(source.type || "").toLowerCase()
+    )
+  ) {
+    return await collectDrupalNewsEvents(source);
   }
 
   if (
