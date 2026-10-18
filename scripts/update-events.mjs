@@ -1446,6 +1446,119 @@ async function collectRssEvents(source) {
 }
 
 
+
+async function collectWordPressEvents(source) {
+  const baseUrl = new URL(source.url).origin;
+  const maxPages = Number(process.env.MAX_WORDPRESS_PAGES || 10);
+  const byKey = new Map();
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const apiUrl =
+      baseUrl +
+      "/wp-json/wp/v2/posts?per_page=100&page=" +
+      page +
+      "&_embed=1";
+
+    const response = await fetch(apiUrl, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "application/json"
+      }
+    });
+
+    if (response.status === 400) {
+      break;
+    }
+
+    if (response.ok === false) {
+      throw new Error(
+        "WordPress API HTTP " + response.status
+      );
+    }
+
+    const posts = await response.json();
+
+    if (Array.isArray(posts) === false) {
+      throw new Error("Risposta WordPress non valida");
+    }
+
+    console.log(
+      "  WordPress API page " +
+        page +
+        ": " +
+        posts.length +
+        " posts"
+    );
+
+    if (posts.length === 0) {
+      break;
+    }
+
+    for (const post of posts) {
+      const title = compact(
+        post.title?.rendered || "",
+        300
+      );
+
+      const postUrl = post.link || baseUrl;
+
+      const content =
+        post.content?.rendered ||
+        post.excerpt?.rendered ||
+        "";
+
+      const publishedAt =
+        post.date_gmt ||
+        post.date ||
+        "";
+
+      if (title.length === 0) {
+        continue;
+      }
+
+      const event = extractRssContentEvent(
+        content,
+        content,
+        source,
+        postUrl,
+        title,
+        publishedAt
+      );
+
+      if (event === null) {
+        continue;
+      }
+
+      const media =
+        post._embedded?.["wp:featuredmedia"]?.[0];
+
+      if (media?.source_url) {
+        event.image_url = media.source_url;
+      }
+
+      event.city = source.comune || event.city || null;
+      event.source_url = postUrl;
+      event.source_name = source.name;
+      event.import_key = eventKey(event);
+
+      byKey.set(event.import_key, event);
+    }
+
+    if (posts.length < 100) {
+      break;
+    }
+
+    await sleep(300);
+  }
+
+  console.log(
+    "  WordPress normalized events: " +
+      byKey.size
+  );
+
+  return [...byKey.values()];
+}
+
 async function collectPratoApiEvents(source) {
   const baseUrl = "https://tempolibero2.comune.prato.it";
   const eventPageUrl = baseUrl + "/event";
@@ -1826,6 +1939,14 @@ async function collectSourceEvents(source) {
       .toLowerCase() === "comune prato"
   ) {
     return await collectPratoApiEvents(source);
+  }
+
+  if (
+    ["wordpress", "wp-rest", "wordpress-rest"].includes(
+      String(source.type || "").toLowerCase()
+    )
+  ) {
+    return await collectWordPressEvents(source);
   }
 
   if (String(source.type || "").toLowerCase() === "rss") {
