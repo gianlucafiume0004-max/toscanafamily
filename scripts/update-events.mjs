@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
 import { collectTeatroDanteEvents } from "./teatrodante-parser.mjs";
 import { collectBibliotecheFirenzeEvents } from "./biblioteche-firenze-parser.mjs";
+import { collectMuseoGalileoEvents } from "./museo-galileo-parser.mjs";
 import crypto from "node:crypto";
 
 const WRITE = process.argv.includes("--write");
@@ -2338,6 +2339,15 @@ async function collectHtmlPages(source, firstHtml) {
 }
 
 async function collectSourceEvents(source) {
+  if (String(source.type || "").toLowerCase() === "museo-galileo") {
+    return await collectMuseoGalileoEvents(source, {
+      fetchText,
+      compact,
+      absoluteUrl,
+      eventKey
+    });
+  }
+
   if (String(source.type || "").toLowerCase() === "biblioteche-firenze") {
     return await collectBibliotecheFirenzeEvents(source, {
       fetchText,
@@ -2957,7 +2967,7 @@ function isFamilyEvent(event) {
   );
   event.family_exclusion = null;
 
-  event.family_super = hasSuperFamilySignal(event);
+  event.family_super = Boolean(event.family_super) || hasSuperFamilySignal(event);
 
   return (
     event.family_super ||
