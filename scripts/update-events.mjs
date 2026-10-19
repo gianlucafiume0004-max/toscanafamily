@@ -3,6 +3,7 @@ import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
 import { collectTeatroDanteEvents } from "./teatrodante-parser.mjs";
+import { collectBibliotecheFirenzeEvents } from "./biblioteche-firenze-parser.mjs";
 import crypto from "node:crypto";
 
 const WRITE = process.argv.includes("--write");
@@ -2337,6 +2338,14 @@ async function collectHtmlPages(source, firstHtml) {
 }
 
 async function collectSourceEvents(source) {
+  if (String(source.type || "").toLowerCase() === "biblioteche-firenze") {
+    return await collectBibliotecheFirenzeEvents(source, {
+      fetchText,
+      compact,
+      eventKey
+    });
+  }
+
   if (String(source.type || "").toLowerCase() === "teatrodante") {
     return await collectTeatroDanteEvents(source, {
       fetchText,
