@@ -5,6 +5,7 @@ import * as cheerio from "cheerio";
 import { collectTeatroDanteEvents } from "./teatrodante-parser.mjs";
 import { collectBibliotecheFirenzeEvents } from "./biblioteche-firenze-parser.mjs";
 import { collectMuseoGalileoEvents } from "./museo-galileo-parser.mjs";
+import { extractPalazzoLeggendaEvents } from "./palazzo-leggenda-parser.mjs";
 import crypto from "node:crypto";
 
 const WRITE = process.argv.includes("--write");
@@ -186,20 +187,114 @@ function normalizeEvent(node, source, pageUrl) {
   return event;
 }
 
+async function fetchTextWithCurl(url) {
+  const { execFile } =
+    await import("node:child_process");
+
+  const timeoutSeconds = Math.max(
+    30,
+    Math.ceil(REQUEST_TIMEOUT_MS / 1000)
+  );
+
+  return await new Promise(
+    (resolve, reject) => {
+      execFile(
+        "curl",
+        [
+          "-L",
+          "--fail",
+          "--silent",
+          "--show-error",
+          "--compressed",
+          "--connect-timeout",
+          String(timeoutSeconds),
+          "--max-time",
+          String(timeoutSeconds),
+          "--user-agent",
+          USER_AGENT,
+          "--header",
+          "Accept: text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+          String(url)
+        ],
+        {
+          encoding: "utf8",
+          maxBuffer: 25 * 1024 * 1024,
+          windowsHide: true
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(
+              new Error(
+                "curl fallback failed: " +
+                  String(
+                    stderr ||
+                    error.message ||
+                    error
+                  ).trim()
+              )
+            );
+
+            return;
+          }
+
+          resolve(stdout);
+        }
+      );
+    }
+  );
+}
+
 async function fetchText(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  const timer = setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS
+  );
+
   try {
     const response = await fetch(url, {
       headers: {
         "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8"
+        Accept:
+          "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8"
       },
       redirect: "follow",
       signal: controller.signal
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    if (!response.ok) {
+      throw new Error(
+        "HTTP " + response.status
+      );
+    }
+
     return await response.text();
+  } catch (error) {
+    const code =
+      error?.cause?.code ||
+      error?.code ||
+      "";
+
+    const fallbackCodes = new Set([
+      "UND_ERR_CONNECT_TIMEOUT",
+      "UND_ERR_HEADERS_TIMEOUT",
+      "UND_ERR_SOCKET",
+      "ECONNRESET",
+      "ETIMEDOUT"
+    ]);
+
+    if (!fallbackCodes.has(code)) {
+      throw error;
+    }
+
+    console.warn(
+      "  fetch " +
+        code +
+        ", retry with curl"
+    );
+
+    return await fetchTextWithCurl(url);
   } finally {
     clearTimeout(timer);
   }
@@ -1921,6 +2016,76 @@ async function collectWordPressEvents(source) {
         continue;
       }
 
+      const isEmpoliLibrary =
+        String(source.name || "")
+          .toLowerCase() ===
+        "biblioteca renato fucini empoli";
+
+      const isPalazzoLeggendaPost =
+        /palazzo leggenda|leggenda festival|iniziative di (?:maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)|estate da leggenda/i.test(
+          title
+        );
+
+      if (
+        isEmpoliLibrary &&
+        isPalazzoLeggendaPost
+      ) {
+        const leggendaEvents =
+          extractPalazzoLeggendaEvents(
+            content,
+            {
+              postTitle: title,
+              postUrl,
+              publishedAt,
+              source,
+              compact,
+              eventKey
+            }
+          );
+
+        const media =
+          post._embedded?.[
+            "wp:featuredmedia"
+          ]?.[0];
+
+        for (
+          const leggendaEvent
+          of leggendaEvents
+        ) {
+          if (media?.source_url) {
+            leggendaEvent.image_url =
+              media.source_url;
+          }
+
+          leggendaEvent.city =
+            source.comune ||
+            leggendaEvent.city ||
+            "Empoli";
+
+          leggendaEvent.source_name =
+            source.name;
+
+          leggendaEvent.import_key =
+            eventKey(leggendaEvent);
+
+          byKey.set(
+            leggendaEvent.import_key,
+            leggendaEvent
+          );
+        }
+
+        if (leggendaEvents.length > 0) {
+          console.log(
+            "  Palazzo Leggenda events: " +
+              leggendaEvents.length +
+              " | " +
+              title
+          );
+
+          continue;
+        }
+      }
+
       const event = extractRssContentEvent(
         content,
         content,
@@ -3049,7 +3214,10 @@ function isFamilyEvent(event) {
     text.includes(normalizeSearchText(keyword))
   );
 
-  if (excludedKeyword) {
+  if (
+    excludedKeyword &&
+    !Boolean(event.family_super)
+  ) {
     event.family_score = 0;
     event.family_matches = [];
     event.family_exclusion = excludedKeyword;
