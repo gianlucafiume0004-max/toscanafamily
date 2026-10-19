@@ -1,0 +1,12 @@
+EVENT IMPORT: PREVIEW MODE
+Active event sources: 1
+[1/1] Scandicci Biblioteca Notizie
+  Drupal news links: 18
+  Drupal news normalized events: 0
+  Events collected: 0
+--- SUMMARY ---
+Found: 0
+Duplicates: 0
+Inserted: 0
+Failed sources: 0
+Preview only. Run with --write to insert new events.
