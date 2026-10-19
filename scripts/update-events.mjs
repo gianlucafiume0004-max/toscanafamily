@@ -1495,7 +1495,7 @@ function parseDrupalNewsDateParts(
   );
 
   const timeMatch = normalized.match(
-    /\b(?:dalle\s+ore|dalle|alle\s+ore|alle|ore)\s*(\d{1,2})(?:\d{2})?/i
+    /\b(?:dalle\s+ore|dalle|alle\s+ore|alle|ore)\s*(\d{1,2})(?::|\.|,)?(\d{2})?/i
   );
 
   const hour = Number(timeMatch?.[1] || 12);
@@ -1628,7 +1628,10 @@ function extractDrupalNewsEvents(
     const eventTitle = compact(
       String(titlePart || articleTitle)
         .replace(/^[\s,;:'"]+/, "")
-        .replace(/[\s,;:'"]+$/, ""),
+        .replace(/[\s,;:'"]+$/, "")
+        .replace(/'+\s*:/g, ":")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
       300
     );
 
