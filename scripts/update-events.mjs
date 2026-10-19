@@ -2462,8 +2462,104 @@ async function eventExists(event) {
   return Boolean(data?.length);
 }
 
+
+function extractAgeRange(value) {
+  const text = String(value || "")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) {
+    return null;
+  }
+
+  let match = text.match(
+    /(?:eta|età)(?:\s+consigliata)?\s*(?:da|dai|dalle)?\s*(\d{1,2})\s*-\s*(\d{1,2})\s*anni/i
+  );
+
+  if (!match) {
+    match = text.match(
+      /(?:da|dai|dalle)?\s*(\d{1,2})\s*-\s*(\d{1,2})\s*anni/i
+    );
+  }
+
+  if (!match) {
+    match = text.match(
+      /(?:da|dai|dalle)\s+(\d{1,2})\s+(?:a|ai|alle)\s+(\d{1,2})\s*anni/i
+    );
+  }
+
+  if (match) {
+    const minimum = Number(match[1]);
+    const maximum = Number(match[2]);
+
+    if (
+      Number.isInteger(minimum) &&
+      Number.isInteger(maximum) &&
+      minimum >= 0 &&
+      maximum >= minimum &&
+      maximum <= 18
+    ) {
+      return minimum + "-" + maximum + " anni";
+    }
+  }
+
+  match = text.match(
+    /(?:a partire da|a partire dai|dai|da|eta minima|età minima)\s*(\d{1,2})\s*anni/i
+  );
+
+  if (match) {
+    const minimum = Number(match[1]);
+
+    if (
+      Number.isInteger(minimum) &&
+      minimum >= 0 &&
+      minimum <= 18
+    ) {
+      return minimum + "+ anni";
+    }
+  }
+
+  match = text.match(
+    /(?:fino a|fino ai|massimo|max)\s*(\d{1,2})\s*anni/i
+  );
+
+  if (match) {
+    const maximum = Number(match[1]);
+
+    if (
+      Number.isInteger(maximum) &&
+      maximum >= 0 &&
+      maximum <= 18
+    ) {
+      return "0-" + maximum + " anni";
+    }
+  }
+
+  if (
+    /(?:bebè|bebe|neonati|prima infanzia|0-3 anni)/i.test(
+      text
+    )
+  ) {
+    return "0-3 anni";
+  }
+
+  return null;
+}
+
 async function insertCompatibleEvent(event) {
   // These five columns are already used by App.jsx.
+
+  const ageRange =
+    event.age_range ||
+    extractAgeRange(
+      [
+        event.title,
+        event.description
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
   
 const row = {
   id: `AUTO_${event.import_key.slice(0, 20)}`,
@@ -2473,7 +2569,8 @@ const row = {
   starts_on: event.starts_on,
   ends_on: event.ends_on || null,
   source_url: event.source_url || null,
-  description: event.description
+  description: event.description,
+  age_range: ageRange || null
 };
 
   const { error } = await supabase.from("events").insert(row);
