@@ -2066,10 +2066,14 @@ async function collectWordPressMecEvents(source) {
       );
 
       /*
-       * Fallback MEC:
-       * alcune pagine non espongono data-datetime.
-       * In quel caso cerca una data italiana nel contenuto
-       * e ricostruisce lo stesso formato usato sopra.
+       * Fallback MEC sicuro.
+       *
+       * Non analizza l'intero body della pagina, perché potrebbe
+       * contenere date di menu, calendari o altri eventi.
+       *
+       * Accetta una data soltanto quando:
+       * 1. si trova vicino al titolo specifico dell'evento; oppure
+       * 2. nel contenuto del singolo post esiste una sola data distinta.
        */
       if (!dateMatch) {
         const contentHtml =
@@ -2077,31 +2081,15 @@ async function collectWordPressMecEvents(source) {
           post.excerpt?.rendered ||
           "";
 
+        const content$ = cheerio.load(
+          "<div id=\"mec-safe-content\">" +
+            contentHtml +
+            "</div>"
+        );
+
         const contentText = compact(
-          cheerio
-            .load(
-              "<div>" +
-                contentHtml +
-                "</div>"
-            )("div")
-            .text(),
-          16000
-        );
-
-        const pageText = compact(
-          $("body").text(),
+          content$("#mec-safe-content").text(),
           20000
-        );
-
-        const fallbackText = compact(
-          [
-            title,
-            contentText,
-            pageText
-          ]
-            .filter(Boolean)
-            .join(" "),
-          30000
         );
 
         const italianMonths = {
@@ -2119,71 +2107,176 @@ async function collectWordPressMecEvents(source) {
           dicembre: "Dec"
         };
 
-        const italianDateMatch =
-          fallbackText.match(
-            /(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/i
+        const datePattern =
+          /(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/i;
+
+        const normalizedTitle = normalizeSearchText(
+          title
+            .replace(/^[^–—:-]+[–—:-]\s*/, "")
+            .replace(/\([^)]*\)/g, "")
+        );
+
+        const titleWords = normalizedTitle
+          .split(/\s+/)
+          .filter((word) => word.length >= 4)
+          .slice(0, 6);
+
+        let selectedText = "";
+
+        content$(
+          "#mec-safe-content h1, " +
+          "#mec-safe-content h2, " +
+          "#mec-safe-content h3, " +
+          "#mec-safe-content h4, " +
+          "#mec-safe-content h5, " +
+          "#mec-safe-content h6, " +
+          "#mec-safe-content p, " +
+          "#mec-safe-content li"
+        ).each((_, element) => {
+          if (selectedText) {
+            return;
+          }
+
+          const elementText = compact(
+            content$(element).text(),
+            2000
           );
 
-        const fallbackTimeMatch =
-          fallbackText.match(
-            /(?:orario(?:\s+attivita|\s+attività)?\s*:?|dalle\s+ore|alle\s+ore|ore)\s*(\d{1,2})(?::|\.)?(\d{2})?/i
+          const normalizedElement =
+            normalizeSearchText(elementText);
+
+          const matchingWords = titleWords.filter(
+            (word) =>
+              normalizedElement.includes(word)
           );
+
+          if (
+            datePattern.test(elementText) &&
+            (
+              matchingWords.length >= 2 ||
+              (
+                titleWords.length === 1 &&
+                matchingWords.length === 1
+              )
+            )
+          ) {
+            selectedText = elementText;
+          }
+        });
+
+        /*
+         * Se non trova una data vicino al titolo, accetta il fallback
+         * soltanto quando il contenuto contiene una sola data distinta.
+         */
+        if (!selectedText) {
+          const globalDatePattern =
+            /(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/gi;
+
+          const uniqueDates = new Map();
+
+          for (
+            const match of contentText.matchAll(
+              globalDatePattern
+            )
+          ) {
+            const key =
+              String(Number(match[1])) +
+              "-" +
+              match[2].toLowerCase() +
+              "-" +
+              String(match[3] || "");
+
+            if (!uniqueDates.has(key)) {
+              uniqueDates.set(key, match[0]);
+            }
+          }
+
+          if (uniqueDates.size === 1) {
+            selectedText =
+              [...uniqueDates.values()][0] +
+              " " +
+              contentText;
+          }
+        }
+
+        const italianDateMatch =
+          selectedText.match(datePattern);
 
         if (italianDateMatch) {
+          const publishedDate = new Date(
+            post.date_gmt ||
+            post.date ||
+            Date.now()
+          );
+
           const fallbackYear =
             italianDateMatch[3] ||
             String(
-              new Date(
-                post.date_gmt ||
-                post.date ||
-                Date.now()
-              ).getUTCFullYear()
+              publishedDate.getUTCFullYear()
             );
 
-          const fallbackHour = String(
-            Number(
-              fallbackTimeMatch?.[1] || 12
-            )
-          ).padStart(2, "0");
-
-          const fallbackMinute = String(
-            Number(
-              fallbackTimeMatch?.[2] || 0
-            )
-          ).padStart(2, "0");
-
-          dateMatch = [
-            italianDateMatch[0],
-            italianMonths[
-              italianDateMatch[2].toLowerCase()
-            ],
-            italianDateMatch[1],
-            fallbackYear,
-            fallbackHour,
-            fallbackMinute,
-            "00"
-          ];
-
-          console.log(
-            "  MEC date fallback: " +
-              title +
-              " | " +
-              dateMatch[2] +
-              " " +
-              dateMatch[1] +
-              " " +
-              dateMatch[3] +
-              " " +
-              dateMatch[4] +
-              ":" +
-              dateMatch[5]
+          /*
+           * Cerca l'orario prima nel testo selezionato e poi nel
+           * contenuto del post. Non utilizza il body della pagina.
+           */
+          const timeSource = compact(
+            selectedText + " " + contentText,
+            22000
           );
+
+          const fallbackTimeMatch =
+            timeSource.match(
+              /(?:orario(?:\s+attivita|\s+attività)?\s*:?|dalle\s+ore|alle\s+ore|ore)\s*(\d{1,2})(?::|\.)?(\d{2})?/i
+            );
+
+          /*
+           * Se manca l'orario, non inventa le 12:00.
+           * L'evento viene ignorato per evitare dati imprecisi.
+           */
+          if (fallbackTimeMatch) {
+            const fallbackHour = String(
+              Number(fallbackTimeMatch[1])
+            ).padStart(2, "0");
+
+            const fallbackMinute = String(
+              Number(
+                fallbackTimeMatch[2] || 0
+              )
+            ).padStart(2, "0");
+
+            dateMatch = [
+              italianDateMatch[0],
+              italianMonths[
+                italianDateMatch[2].toLowerCase()
+              ],
+              italianDateMatch[1],
+              fallbackYear,
+              fallbackHour,
+              fallbackMinute,
+              "00"
+            ];
+
+            console.log(
+              "  MEC safe fallback: " +
+                title +
+                " | " +
+                dateMatch[2] +
+                " " +
+                dateMatch[1] +
+                " " +
+                dateMatch[3] +
+                " " +
+                dateMatch[4] +
+                ":" +
+                dateMatch[5]
+            );
+          }
         }
       }
 
       if (!dateMatch) {
         console.warn(
-          "  MEC date not found: " +
+          "  MEC date not found safely: " +
             title
         );
 
