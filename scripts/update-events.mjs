@@ -2516,6 +2516,167 @@ async function collectHtmlPages(source, firstHtml) {
   return [...listingPages, ...detailPages];
 }
 
+async function collectTribeEventsApi(source) {
+  const byKey = new Map();
+  const maxPages = Number(
+    process.env.MAX_TRIBE_EVENTS_PAGES || 10
+  );
+
+  for (
+    let pageNumber = 1;
+    pageNumber <= maxPages;
+    pageNumber += 1
+  ) {
+    const apiUrl = new URL(source.url);
+
+    apiUrl.searchParams.set(
+      "page",
+      String(pageNumber)
+    );
+
+    apiUrl.searchParams.set(
+      "per_page",
+      "50"
+    );
+
+    let payload;
+
+    try {
+      const raw = await fetchText(apiUrl.href);
+      payload = JSON.parse(raw);
+    } catch (error) {
+      if (pageNumber === 1) {
+        throw error;
+      }
+
+      console.warn(
+        "  Tribe API page " +
+          pageNumber +
+          " skipped: " +
+          error.message
+      );
+
+      break;
+    }
+
+    const items = Array.isArray(payload?.events)
+      ? payload.events
+      : [];
+
+    console.log(
+      "  Tribe API page " +
+        pageNumber +
+        ": " +
+        items.length +
+        " events"
+    );
+
+    for (const item of items) {
+      const title = compact(
+        item.title || "",
+        300
+      );
+
+      const startsOn = validDate(
+        item.start_date ||
+          item.start_date_details?.year
+      );
+
+      if (!title || !startsOn) {
+        continue;
+      }
+
+      const descriptionHtml =
+        item.description || "";
+
+      const description = compact(
+        cheerio.load(
+          "<div>" +
+            descriptionHtml +
+            "</div>"
+        )("div").text(),
+        4000
+      ) || null;
+
+      const venue = item.venue || {};
+
+      const location = compact(
+        venue.venue ||
+          venue.address ||
+          "",
+        500
+      ) || null;
+
+      const address = compact(
+        [
+          venue.address,
+          venue.city,
+          venue.zip,
+          venue.country
+        ]
+          .filter(Boolean)
+          .join(", "),
+        500
+      ) || null;
+
+      const event = {
+        title,
+        city:
+          compact(
+            venue.city ||
+              source.comune ||
+              "Pistoia",
+            200
+          ) || "Pistoia",
+        location,
+        starts_on: startsOn,
+        ends_on: validDate(
+          item.end_date
+        ),
+        description,
+        source_url:
+          item.url ||
+          item.website ||
+          source.url,
+        image_url:
+          item.image?.url ||
+          item.image?.sizes?.medium?.url ||
+          null,
+        address,
+        source_name: source.name
+      };
+
+      event.import_key = eventKey(event);
+
+      byKey.set(
+        event.import_key,
+        event
+      );
+    }
+
+    const totalPages = Number(
+      payload?.total_pages || 0
+    );
+
+    if (
+      items.length === 0 ||
+      (totalPages > 0 &&
+        pageNumber >= totalPages)
+    ) {
+      break;
+    }
+
+    await sleep(250);
+  }
+
+  console.log(
+    "  Tribe API normalized events: " +
+      byKey.size
+  );
+
+  return [...byKey.values()];
+}
+
 async function collectSourceEvents(source) {
   if (String(source.type || "").toLowerCase() === "museo-galileo") {
     return await collectMuseoGalileoEvents(source, {
@@ -2572,6 +2733,13 @@ async function collectSourceEvents(source) {
     )
   ) {
     return await collectWordPressEvents(source);
+  }
+
+  if (
+    String(source.type || "").toLowerCase() ===
+    "tribe_events_api"
+  ) {
+    return await collectTribeEventsApi(source);
   }
 
   if (String(source.type || "").toLowerCase() === "rss") {
@@ -3249,6 +3417,7 @@ const EXCLUDED_KEYWORDS = [
   "english",
   "club del libro",
   "gruppo di lettura",
+  "circolo di lettura",
   "reading group"
 ];
 
