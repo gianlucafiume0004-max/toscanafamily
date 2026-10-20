@@ -3430,6 +3430,7 @@ function calculateFamilyScore(event) {
 }
 
 const EXCLUDED_KEYWORDS = [
+  "cineclub",
   "madame bovary",
   "consiglio comunale",
   "seduta consiliare",
@@ -3481,13 +3482,39 @@ function searchableEventText(event) {
 function isFamilyEvent(event) {
   const text = normalizeSearchText(searchableEventText(event));
 
+  /*
+   * Calcola subito SUPER FAMILY, prima delle esclusioni.
+   * Le fasce d'eta come 0-2, 3-6, 4-7, 5-10,
+   * 7-9, +3 e +4 anni possono quindi salvare
+   * un evento family classificato genericamente
+   * come gruppo o circolo di lettura.
+   */
+  event.family_super =
+    Boolean(event.family_super) ||
+    hasSuperFamilySignal(event);
+
   const excludedKeyword = EXCLUDED_KEYWORDS.find((keyword) =>
     text.includes(normalizeSearchText(keyword))
   );
 
+  /*
+   * Esclusioni adulte inderogabili:
+   * restano escluse anche in presenza di altri segnali.
+   */
+  const hardAdultExclusions = new Set([
+    "madame bovary",
+    "cineforum",
+    "cineclub"
+  ]);
+
   if (
     excludedKeyword &&
-    !Boolean(event.family_super)
+    (
+      hardAdultExclusions.has(
+        normalizeSearchText(excludedKeyword)
+      ) ||
+      !event.family_super
+    )
   ) {
     event.family_score = 0;
     event.family_matches = [];
