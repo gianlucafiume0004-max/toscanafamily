@@ -1935,6 +1935,338 @@ async function collectDrupalEvents(source) {
   return [...byKey.values()];
 }
 
+async function collectWordPressMecEvents(source) {
+  const baseUrl = new URL(source.url).origin;
+
+  const maxPages = Number(
+    process.env.MAX_WORDPRESS_MEC_PAGES || 3
+  );
+
+  const byKey = new Map();
+
+  const monthNumbers = {
+    jan: "01",
+    feb: "02",
+    mar: "03",
+    apr: "04",
+    may: "05",
+    jun: "06",
+    jul: "07",
+    aug: "08",
+    sep: "09",
+    oct: "10",
+    nov: "11",
+    dec: "12"
+  };
+
+  for (
+    let pageNumber = 1;
+    pageNumber <= maxPages;
+    pageNumber += 1
+  ) {
+    const apiUrl =
+      baseUrl +
+      "/wp-json/wp/v2/mec-events" +
+      "?per_page=100" +
+      "&page=" +
+      pageNumber +
+      "&status=publish" +
+      "&orderby=date" +
+      "&order=desc" +
+      "&_embed=1";
+
+    const response = await fetch(apiUrl, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "application/json"
+      }
+    });
+
+    if (response.status === 400) {
+      break;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        "WordPress MEC API HTTP " +
+          response.status
+      );
+    }
+
+    const posts = await response.json();
+
+    if (!Array.isArray(posts)) {
+      throw new Error(
+        "Risposta WordPress MEC non valida"
+      );
+    }
+
+    console.log(
+      "  WordPress MEC page " +
+        pageNumber +
+        ": " +
+        posts.length +
+        " events"
+    );
+
+    if (posts.length === 0) {
+      break;
+    }
+
+    for (const post of posts) {
+      const title = compact(
+        post.title?.rendered || "",
+        300
+      );
+
+      const postUrl = post.link || "";
+
+      if (!title || !postUrl) {
+        continue;
+      }
+
+      let detailHtml;
+
+      try {
+        await sleep(200);
+        detailHtml = await fetchText(postUrl);
+      } catch (error) {
+        console.warn(
+          "  MEC detail skip " +
+            postUrl +
+            ": " +
+            error.message
+        );
+
+        continue;
+      }
+
+      const $ = cheerio.load(detailHtml);
+
+      const countdown = $(
+        "[data-datetime]"
+      ).first();
+
+      const dateTimeText = compact(
+        countdown.attr("data-datetime") || "",
+        200
+      );
+
+      const offsetText = compact(
+        countdown.attr("data-gmt_offset") || "",
+        100
+      );
+
+      /*
+       * Esempio MEC:
+       * Tue Dec 22 2026 17:00:00
+       */
+      const dateMatch = dateTimeText.match(
+        /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/i
+      );
+
+      if (!dateMatch) {
+        console.warn(
+          "  MEC date not found: " +
+            title
+        );
+
+        continue;
+      }
+
+      const month =
+        monthNumbers[
+          dateMatch[1].toLowerCase()
+        ];
+
+      const day = String(
+        Number(dateMatch[2])
+      ).padStart(2, "0");
+
+      const year = dateMatch[3];
+
+      const hour = String(
+        Number(dateMatch[4])
+      ).padStart(2, "0");
+
+      const minute = dateMatch[5];
+      const second = dateMatch[6];
+
+      const offsetMatch = offsetText.match(
+        /([+-]\d{2}:\d{2})/
+      );
+
+      const timezoneOffset =
+        offsetMatch?.[1] || "+01:00";
+
+      const startsOn = validDate(
+        year +
+          "-" +
+          month +
+          "-" +
+          day +
+          "T" +
+          hour +
+          ":" +
+          minute +
+          ":" +
+          second +
+          timezoneOffset
+      );
+
+      if (!startsOn) {
+        continue;
+      }
+
+      /*
+       * Cerca un intervallo come:
+       * 17:00 - 18:30
+       */
+      const timeRangeText = compact(
+        $(".mec-events-abbr")
+          .first()
+          .text() ||
+          $("body").text(),
+        12000
+      );
+
+      const endTimeMatch =
+        timeRangeText.match(
+          /\b\d{1,2}:\d{2}\s*[-–]\s*(\d{1,2}):(\d{2})\b/
+        );
+
+      let endsOn = null;
+
+      if (endTimeMatch) {
+        const endHour = String(
+          Number(endTimeMatch[1])
+        ).padStart(2, "0");
+
+        const endMinute =
+          endTimeMatch[2];
+
+        endsOn = validDate(
+          year +
+            "-" +
+            month +
+            "-" +
+            day +
+            "T" +
+            endHour +
+            ":" +
+            endMinute +
+            ":00" +
+            timezoneOffset
+        );
+      }
+
+      const contentHtml =
+        post.content?.rendered ||
+        post.excerpt?.rendered ||
+        "";
+
+      const description = compact(
+        cheerio
+          .load(
+            "<div>" +
+              contentHtml +
+              "</div>"
+          )("div")
+          .text(),
+        4000
+      ) || null;
+
+      const categories = Array.isArray(
+        post.class_list
+      )
+        ? post.class_list.join(" ")
+        : "";
+
+      const locationMatch =
+        description?.match(
+          /(?:Luogo|Presso):\s*(.+?)(?=\s+(?:Ingresso|Costo|Orario|Prenotazione|Informazioni|$))/i
+        );
+
+      const location = compact(
+        locationMatch?.[1] ||
+          (
+            /mmab/i.test(
+              title +
+                " " +
+                description
+            )
+              ? "MMAB"
+              : ""
+          ),
+        500
+      ) || null;
+
+      const media =
+        post._embedded?.[
+          "wp:featuredmedia"
+        ]?.[0];
+
+      const imageUrl =
+        media?.source_url ||
+        post.yoast_head_json
+          ?.og_image?.[0]?.url ||
+        null;
+
+      const event = {
+        title,
+        city:
+          source.comune ||
+          "Montelupo Fiorentino",
+        location,
+        starts_on: startsOn,
+        ends_on: endsOn,
+        description:
+          compact(
+            [
+              description,
+              categories
+            ]
+              .filter(Boolean)
+              .join(" "),
+            4000
+          ) || null,
+        source_url: postUrl,
+        image_url: imageUrl,
+        address:
+          /mmab/i.test(
+            title +
+              " " +
+              description
+          )
+            ? "Piazza Vittorio Veneto 11, Montelupo Fiorentino"
+            : null,
+        source_name: source.name
+      };
+
+      event.import_key =
+        eventKey(event);
+
+      byKey.set(
+        event.import_key,
+        event
+      );
+    }
+
+    if (posts.length < 100) {
+      break;
+    }
+
+    await sleep(300);
+  }
+
+  console.log(
+    "  WordPress MEC normalized events: " +
+      byKey.size
+  );
+
+  return [...byKey.values()];
+}
+
 async function collectWordPressEvents(source) {
   const baseUrl = new URL(source.url).origin;
   const maxPages = Number(
@@ -2725,6 +3057,14 @@ async function collectSourceEvents(source) {
     )
   ) {
     return await collectDrupalEvents(source);
+  }
+
+  if (
+    ["wordpress-mec", "wordpress_mec", "wp-mec"].includes(
+      String(source.type || "").toLowerCase()
+    )
+  ) {
+    return await collectWordPressMecEvents(source);
   }
 
   if (
