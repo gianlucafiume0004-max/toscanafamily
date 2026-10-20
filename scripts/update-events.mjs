@@ -2061,9 +2061,125 @@ async function collectWordPressMecEvents(source) {
        * Esempio MEC:
        * Tue Dec 22 2026 17:00:00
        */
-      const dateMatch = dateTimeText.match(
+      let dateMatch = dateTimeText.match(
         /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/i
       );
+
+      /*
+       * Fallback MEC:
+       * alcune pagine non espongono data-datetime.
+       * In quel caso cerca una data italiana nel contenuto
+       * e ricostruisce lo stesso formato usato sopra.
+       */
+      if (!dateMatch) {
+        const contentHtml =
+          post.content?.rendered ||
+          post.excerpt?.rendered ||
+          "";
+
+        const contentText = compact(
+          cheerio
+            .load(
+              "<div>" +
+                contentHtml +
+                "</div>"
+            )("div")
+            .text(),
+          16000
+        );
+
+        const pageText = compact(
+          $("body").text(),
+          20000
+        );
+
+        const fallbackText = compact(
+          [
+            title,
+            contentText,
+            pageText
+          ]
+            .filter(Boolean)
+            .join(" "),
+          30000
+        );
+
+        const italianMonths = {
+          gennaio: "Jan",
+          febbraio: "Feb",
+          marzo: "Mar",
+          aprile: "Apr",
+          maggio: "May",
+          giugno: "Jun",
+          luglio: "Jul",
+          agosto: "Aug",
+          settembre: "Sep",
+          ottobre: "Oct",
+          novembre: "Nov",
+          dicembre: "Dec"
+        };
+
+        const italianDateMatch =
+          fallbackText.match(
+            /(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)?\s*(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/i
+          );
+
+        const fallbackTimeMatch =
+          fallbackText.match(
+            /(?:orario(?:\s+attivita|\s+attività)?\s*:?|dalle\s+ore|alle\s+ore|ore)\s*(\d{1,2})(?::|\.)?(\d{2})?/i
+          );
+
+        if (italianDateMatch) {
+          const fallbackYear =
+            italianDateMatch[3] ||
+            String(
+              new Date(
+                post.date_gmt ||
+                post.date ||
+                Date.now()
+              ).getUTCFullYear()
+            );
+
+          const fallbackHour = String(
+            Number(
+              fallbackTimeMatch?.[1] || 12
+            )
+          ).padStart(2, "0");
+
+          const fallbackMinute = String(
+            Number(
+              fallbackTimeMatch?.[2] || 0
+            )
+          ).padStart(2, "0");
+
+          dateMatch = [
+            italianDateMatch[0],
+            italianMonths[
+              italianDateMatch[2].toLowerCase()
+            ],
+            italianDateMatch[1],
+            fallbackYear,
+            fallbackHour,
+            fallbackMinute,
+            "00"
+          ];
+
+          console.log(
+            "  MEC date fallback: " +
+              title +
+              " | " +
+              dateMatch[2] +
+              " " +
+              dateMatch[1] +
+              " " +
+              dateMatch[3] +
+              " " +
+              dateMatch[4] +
+              ":" +
+              dateMatch[5]
+          );
+        }
+      }
 
       if (!dateMatch) {
         console.warn(
