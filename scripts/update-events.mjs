@@ -3251,9 +3251,53 @@ function hasSuperFamilySignal(event) {
     searchableEventText(event)
   );
 
-  return SUPER_FAMILY_KEYWORDS.some((keyword) =>
-    text.includes(normalizeSearchText(keyword))
-  );
+  /*
+   * Queste parole descrivono soltanto il contesto.
+   * Non possono rendere un evento SUPER FAMILY da sole.
+   */
+  const weakContextKeywords = new Set([
+    "autore",
+    "autrice",
+    "laboratorio",
+    "laboratori",
+    "lettura",
+    "letture",
+    "spettacolo teatrale",
+    "fiaba",
+    "fiabe",
+    "favola",
+    "favole",
+    "alieno",
+    "drago",
+    "nonni"
+  ]);
+
+  /*
+   * Un'indicazione esplicita di eta rende l'evento family.
+   * Esempi: 0-2 anni, 18-36 mesi, 4+, +5 anni,
+   * da 5 a 10 anni, dai 7 agli 11 anni.
+   */
+  const hasFamilyAge =
+    /\b\d{1,2}\s*[-–]\s*\d{1,2}\s*(?:anni|mesi)\b/i.test(text) ||
+    /\b\d{1,2}\s*\+\s*(?:anni|mesi)?\b/i.test(text) ||
+    /(?:^|\s)\+\s*\d{1,2}\s*(?:anni|mesi)?\b/i.test(text) ||
+    /\b(?:da|dai|dagli)\s+\d{1,2}\s+(?:a|ai|agli)\s+\d{1,2}\s+(?:anni|mesi)\b/i.test(text) ||
+    /\b(?:da|dai|dagli)\s+\d{1,2}\s*(?:anni|mesi)\b/i.test(text);
+
+  if (hasFamilyAge) {
+    return true;
+  }
+
+  return SUPER_FAMILY_KEYWORDS.some((keyword) => {
+    const normalizedKeyword =
+      normalizeSearchText(keyword);
+
+    return (
+      normalizedKeyword &&
+      !weakContextKeywords.has(normalizedKeyword) &&
+      text.includes(normalizedKeyword)
+    );
+  });
 }
 
 function normalizeSearchText(value) {
@@ -3386,6 +3430,7 @@ function calculateFamilyScore(event) {
 }
 
 const EXCLUDED_KEYWORDS = [
+  "madame bovary",
   "consiglio comunale",
   "seduta consiliare",
   "convocazione",
