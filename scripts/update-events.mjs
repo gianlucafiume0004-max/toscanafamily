@@ -1638,7 +1638,8 @@ function extractDrupalNewsEvents(
   );
 
   const articleText = compact(
-    $(".field--name-body").first().text() ||
+    $(".field--name-field-descrizione-completa").first().text() ||
+      $(".field--name-body").first().text() ||
       $("article").first().text() ||
       $("main").first().text(),
     16000
@@ -1679,7 +1680,7 @@ function extractDrupalNewsEvents(
 
   const paragraphs = [];
 
-  $(".field--name-body p, article p, main p").each(
+  $(".field--name-field-descrizione-completa p, .field--name-body p, article p, main p").each(
     (_, element) => {
       const value = compact(
         $(element).text(),
@@ -1692,13 +1693,25 @@ function extractDrupalNewsEvents(
     }
   );
 
-  if (paragraphs.length === 0) {
-    paragraphs.push(
-      ...articleText
-        .split(/\n+/)
-        .map((value) => compact(value, 4000))
-        .filter(Boolean)
+  const weekdayParts = articleText
+    .split(
+      /(?=(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)\s+\d{1,2}\b)/i
+    )
+    .map((value) => compact(value, 4000))
+    .filter((value) =>
+      /^(?:lunedi|lunedì|martedi|martedì|mercoledi|mercoledì|giovedi|giovedì|venerdi|venerdì|sabato|domenica)\s+\d{1,2}\b/i.test(
+        value
+      )
     );
+
+  paragraphs.push(...weekdayParts);
+
+  const uniqueParagraphs = [...new Set(paragraphs)];
+  paragraphs.length = 0;
+  paragraphs.push(...uniqueParagraphs);
+
+  if (paragraphs.length === 0 && articleText) {
+    paragraphs.push(articleText);
   }
 
   const events = [];
@@ -1764,7 +1777,7 @@ function extractDrupalNewsEvents(
 
 async function collectDrupalNewsEvents(source) {
   const maxPages = Number(
-    process.env.MAX_DRUPAL_NEWS_PAGES || 3
+    process.env.MAX_DRUPAL_NEWS_PAGES || 8
   );
 
   const articleUrls = new Set();
