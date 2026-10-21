@@ -5,6 +5,7 @@ import iconUrl from "leaflet/dist/images/marker-icon.png";
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import { supabase } from "./lib/supabase.js";
+import Activities from "./pages/Activities.jsx";
 
 L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
 
@@ -16,12 +17,95 @@ const TABS = [
   { key: "play_center", label: "Ludoteche", icon: "🧸" }
 ];
 
-export default function App() {
+const EVENT_CATEGORIES = [
+  "Laboratori",
+  "Letture",
+  "Teatro",
+  "Musei",
+  "Musica",
+  "Sport",
+  "Natura",
+  "Biblioteca",
+  "Feste",
+  "Cinema"
+];
+
+const EVENT_CATEGORY_KEYWORDS = {
+  Laboratori: ["laboratorio", "laboratori", "workshop", "attivita creativa", "attivita per bambini"],
+  Letture: ["lettura", "letture", "leggere", "narrazione", "storytelling", "albi illustrati"],
+  Teatro: ["teatro", "teatrale", "spettacolo", "burattini", "marionette", "teatro ragazzi"],
+  Musei: ["museo", "musei", "mostra", "visita guidata", "esposizione"],
+  Musica: ["musica", "concerto", "coro", "strumenti musicali", "danza"],
+  Sport: ["sport", "calcio", "basket", "pallavolo", "ginnastica", "torneo", "gara"],
+  Natura: ["natura", "ambiente", "parco", "fattoria", "animali", "orto", "bosco", "escursione"],
+  Biblioteca: ["biblioteca", "bibliotec", "prestito libri"],
+  Feste: ["festa", "feste", "sagra", "carnevale", "natale", "halloween", "befana"],
+  Cinema: ["cinema", "film", "proiezione", "cartone animato"]
+};
+
+const AGE_FILTERS = [
+  { value: "0-3", label: "0-3 anni", min: 0, max: 3 },
+  { value: "3-6", label: "3-6 anni", min: 3, max: 6 },
+  { value: "6-10", label: "6-10 anni", min: 6, max: 10 },
+  { value: "10+", label: "10+ anni", min: 10, max: Infinity }
+];
+
+function eventText(event) {
+  function flatten(value) {
+    if (typeof value === "string") return [value];
+    if (Array.isArray(value)) return value.flatMap(flatten);
+    if (value && typeof value === "object") {
+      return ["name", "label", "category", "title"].flatMap((key) => flatten(value[key]));
+    }
+    return [];
+  }
+
+  return flatten([event.title, event.description, event.category, event.categories, event.tags])
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it-IT");
+}
+
+function getEventCategories(event) {
+  const text = eventText(event);
+  const categories = EVENT_CATEGORIES.filter((category) =>
+    EVENT_CATEGORY_KEYWORDS[category].some((keyword) => text.includes(keyword))
+  );
+
+  return categories;
+}
+
+function matchesAgeRange(eventAgeRange, selectedAge) {
+  if (!selectedAge) return true;
+  if (eventAgeRange == null || (typeof eventAgeRange === "string" && !eventAgeRange.trim())) return true;
+  if (typeof eventAgeRange !== "string") return false;
+
+  const normalized = eventAgeRange
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it-IT");
+  const ages = [...normalized.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(",", ".")));
+  if (!ages.length) return false;
+
+  const range = AGE_FILTERS.find((item) => item.value === selectedAge);
+  if (!range) return true;
+
+  const isPlusRange = ages.length === 1 && /(\+|oltre|piu|maggiore|dai|da)\s*\d/.test(normalized);
+  const min = isPlusRange ? ages[ages.length - 1] : ages[0];
+  const max = isPlusRange ? Infinity : ages.length > 1 ? ages[1] : min;
+  return min <= range.max && max >= range.min;
+}
+
+function HomeApp() {
   const [active, setActive] = useState("parks");
   const [parks, setParks] = useState([]);
   const [events, setEvents] = useState([]);
   const [providers, setProviders] = useState([]);
   const [city, setCity] = useState("");
+  const [eventCategory, setEventCategory] = useState("");
+  const [eventAge, setEventAge] = useState("");
+  const [eventSearch, setEventSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState([]);
   const [selectedPark, setSelectedPark] = useState(null);
@@ -85,7 +169,13 @@ export default function App() {
 
   const filtered = currentItems.filter((item) => {
     const itemCity = active === "parks" ? item.comune : item.city;
-    return !city || itemCity === city;
+    if (city && itemCity !== city) return false;
+    if (active !== "events") return true;
+    if (eventCategory && !getEventCategories(item).includes(eventCategory)) return false;
+    if (!matchesAgeRange(item.age_range, eventAge)) return false;
+    const query = eventSearch.trim().toLocaleLowerCase("it-IT");
+    if (query && !eventText(item).includes(query)) return false;
+    return true;
   });
 
   const mappedParks = active === "parks"
@@ -100,6 +190,9 @@ export default function App() {
   function changeTab(key) {
     setActive(key);
     setCity("");
+    setEventCategory("");
+    setEventAge("");
+    setEventSearch("");
   }
 
   return (
@@ -125,12 +218,13 @@ export default function App() {
             <span>{tab.icon}</span> {tab.label}
           </button>
         ))}
+        <a className="activities-menu-link" href="/attivita">Attività</a>
       </nav>
 
       <main>
-        <section className="search-panel city-filter-panel">
+        <section className={`search-panel city-filter-panel ${active === "events" ? "event-filters" : ""}`}>
           <div className="city-filter-wrapper">
-            <label className="search-label" htmlFor="city-filter">📍 Scegli il comune</label>
+            <label className="search-label" htmlFor="city-filter">📍 Comune</label>
             <select
               id="city-filter"
               className="town-select"
@@ -148,6 +242,49 @@ export default function App() {
               </button>
             )}
           </div>
+          {active === "events" && (
+            <>
+              <div className="city-filter-wrapper">
+                <label className="search-label" htmlFor="event-category-filter">🎯 Categoria</label>
+                <select
+                  id="event-category-filter"
+                  className="town-select"
+                  value={eventCategory}
+                  onChange={(event) => setEventCategory(event.target.value)}
+                >
+                  <option value="">Tutte</option>
+                  {EVENT_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="city-filter-wrapper">
+                <label className="search-label" htmlFor="event-age-filter">👶 Età</label>
+                <select
+                  id="event-age-filter"
+                  className="town-select"
+                  value={eventAge}
+                  onChange={(event) => setEventAge(event.target.value)}
+                >
+                  <option value="">Tutte</option>
+                  {AGE_FILTERS.map((age) => (
+                    <option key={age.value} value={age.value}>{age.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="city-filter-wrapper event-search-wrapper">
+                <label className="search-label" htmlFor="event-search">🔎 Cerca eventi</label>
+                <input
+                  id="event-search"
+                  className="town-select"
+                  type="search"
+                  value={eventSearch}
+                  onChange={(event) => setEventSearch(event.target.value)}
+                  placeholder="Titolo o descrizione"
+                />
+              </div>
+            </>
+          )}
         </section>
         {loading && <div className="message loading">Caricamento delle migliori idee per la famiglia...</div>}
         {errors.map((error) => <div key={error} className="message error">{error}</div>)}
@@ -181,6 +318,7 @@ export default function App() {
 
         {!loading && (
           <section className="results-section">
+            {active === "events" && <p className="events-shown-count">Mostrati {filtered.length} eventi</p>}
             <div className="section-heading">
               <div><span className="eyebrow">SCELTI PER TE</span><h2>{TABS.find((tab) => tab.key === active)?.icon} {TABS.find((tab) => tab.key === active)?.label}</h2></div>
               <span className="result-pill">{filtered.length} risultati</span>
@@ -191,7 +329,13 @@ export default function App() {
           </section>
         )}
 
-        {!loading && filtered.length === 0 && errors.length === 0 && <div className="message empty">Nessun risultato per il comune selezionato. Prova un altro comune.</div>}
+        {!loading && filtered.length === 0 && errors.length === 0 && (
+          <div className="message empty">
+            {active === "events"
+              ? "Nessun evento corrisponde ai filtri selezionati. Prova a modificarli."
+              : "Nessun risultato per il comune selezionato. Prova un altro comune."}
+          </div>
+        )}
       </main>
 
       {selectedPark && (
@@ -332,4 +476,18 @@ function hasCoordinates(park) {
 function directionsUrl(park) {
   const destination = `${Number(park.latitudine)},${Number(park.longitudine)}`;
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+}
+
+export default function App() {
+  const [pathname, setPathname] = useState(window.location.pathname);
+
+  useEffect(() => {
+    function updatePathname() {
+      setPathname(window.location.pathname);
+    }
+    window.addEventListener("popstate", updatePathname);
+    return () => window.removeEventListener("popstate", updatePathname);
+  }, []);
+
+  return pathname === "/attivita" ? <Activities /> : <HomeApp />;
 }

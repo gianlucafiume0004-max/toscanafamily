@@ -52,6 +52,19 @@ nav button {
 }
 nav button:hover { transform: translateY(-2px); }
 nav button.active { color: white; background: linear-gradient(135deg, var(--green), var(--blue)); }
+.activities-menu-link {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 12px 18px;
+  color: #375047;
+  background: white;
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.activities-menu-link:hover { color: var(--green-dark); transform: translateY(-2px); }
 
 main { padding: 20px; }
 .filters { display: grid; grid-template-columns: 1fr 250px; gap: 12px; margin-bottom: 18px; }
@@ -132,6 +145,135 @@ footer { margin-top: 34px; padding: 30px 22px; text-align: center; color: #63756
 .directions-button { color: white; background: linear-gradient(135deg, var(--green), var(--blue)); box-shadow: 0 8px 20px rgba(33,165,106,.23); }
 .secondary-button { color: #37564a; background: #edf6f2; }
 
+.activities-page { min-height: 100vh; color: #24312c; }
+.activities-hero {
+  position: relative;
+  padding: 72px 24px 54px;
+  text-align: center;
+  color: white;
+  background: linear-gradient(135deg, #13764a, #24a9d8 60%, #ff9d42);
+}
+.activities-brand {
+  position: absolute;
+  top: 22px;
+  left: max(22px, calc((100% - 1180px) / 2));
+  color: white;
+  font-weight: 900;
+  text-decoration: none;
+}
+.activities-eyebrow { font-size: .78rem; font-weight: 900; letter-spacing: .16em; }
+.activities-hero h1 { margin: 10px 0; font-size: clamp(2rem, 5vw, 3.4rem); }
+.activities-hero p { margin: 0 auto; max-width: 620px; font-size: 1.08rem; }
+.activities-nav {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(255,255,255,.9);
+}
+.activities-nav a { padding: 10px 16px; border-radius: 999px; color: #375047; font-weight: 800; text-decoration: none; }
+.activities-nav a.active { color: white; background: linear-gradient(135deg, var(--green), var(--blue)); }
+.activities-main { width: min(1180px, 100%); margin: 0 auto; padding: 28px 22px 48px; }
+.activities-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+.activities-filters label { display: flex; flex-direction: column; gap: 7px; color: #53665e; font-size: .9rem; font-weight: 800; }
+.activities-filters select, .activities-filters input[type="search"] {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #dbe9e3;
+  border-radius: 13px;
+  padding: 10px 12px;
+  color: #24312c;
+  background: white;
+}
+.activities-filters .activities-premium-filter { min-height: 46px; flex-direction: row; align-items: center; gap: 9px; }
+.activities-premium-filter input { width: 18px; height: 18px; accent-color: var(--green); }
+.activities-count { margin: 22px 2px 0; color: #63756d; font-weight: 700; }
+.activities-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; margin-top: 14px; }
+.activity-card {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  padding: 20px;
+  border: 1px solid #e1eee8;
+  border-top: 6px solid var(--green);
+  border-radius: 21px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+.activity-card:nth-child(3n+2) { border-top-color: var(--blue); }
+.activity-card:nth-child(3n) { border-top-color: var(--orange); }
+.activity-card-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.activity-kind, .activity-premium { padding: 6px 10px; border-radius: 999px; font-size: .78rem; font-weight: 900; }
+.activity-kind { color: #176a45; background: #dcf8e9; }
+.activity-premium { color: #79520a; background: #fff0c2; }
+.activity-card h2 { margin: 16px 0 6px; color: var(--green-dark); font-size: 1.25rem; }
+.activity-city { margin: 0; color: #63756d; font-weight: 700; }
+.activity-services { margin: 14px 0; color: #53665e; line-height: 1.5; }
+.activity-website { margin-top: auto; padding-top: 10px; color: #087aa4; font-weight: 900; text-decoration: none; }
+.activity-website:hover { text-decoration: underline; }
+.activities-message { margin: 24px 0; padding: 18px; border-radius: 18px; text-align: center; background: #eaf5ff; }
+.activities-message.error { color: #9b1c1c; background: #ffe9e9; }
+
+.search-panel.city-filter-panel.event-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 18px;
+  padding: 18px;
+  border-radius: 22px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+.search-panel.city-filter-panel.event-filters > .city-filter-wrapper {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  visibility: visible;
+}
+.event-filters .search-label {
+  display: block;
+  color: #375047;
+  font-weight: 800;
+}
+.event-filters .town-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  border: 1px solid #dbe9e3;
+  border-radius: 18px;
+  padding: 12px 14px;
+  color: #24312c;
+  background: white;
+  box-shadow: 0 6px 18px rgba(0,0,0,.06);
+}
+.event-filters .town-select:focus {
+  border-color: var(--blue);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(36,169,216,.15);
+}
+.events-shown-count { margin: 0 0 14px; color: #63756d; font-weight: 800; }
+
+@media (max-width: 800px) {
+  .search-panel.city-filter-panel.event-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .search-panel.city-filter-panel.event-filters { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 620px) {
   .details-grid { grid-template-columns: 1fr; padding: 18px 16px 8px; }
   .modal-hero { padding: 28px 58px 24px 20px; }
@@ -139,4 +281,15 @@ footer { margin-top: 34px; padding: 30px 22px; text-align: center; color: #63756
   .park-notes { margin: 10px 16px; }
   .modal-actions { padding: 16px; }
   .modal-actions > * { flex: 1 1 100%; text-align: center; }
+}
+
+@media (max-width: 800px) {
+  .activities-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .activities-hero { padding: 78px 18px 38px; }
+  .activities-main { padding: 20px 14px 36px; }
+  .activities-filters { grid-template-columns: 1fr; }
+  .activities-grid { grid-template-columns: 1fr; }
 }
