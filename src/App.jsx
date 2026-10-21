@@ -6,14 +6,26 @@ import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import { supabase } from "./lib/supabase.js";
 import Activities from "./pages/Activities.jsx";
+import ProviderDetail from "./pages/ProviderDetail.jsx";
+import { canonicalProviderCategory } from "./lib/providerCategories.js";
 
 L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
+const parkIcon = L.icon({
+  iconUrl,
+  iconRetinaUrl,
+  shadowUrl,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41],
+  alt: "Parco"
+});
 
 const TABS = [
   { key: "parks", label: "Parchi", icon: "🌳" },
   { key: "events", label: "Eventi", icon: "🎉" },
-  { key: "animator", label: "Animatori", icon: "🎈" },
-  { key: "party_venue", label: "Sale feste", icon: "🏰" },
+  { key: "feste", label: "Feste", icon: "🎉" },
   { key: "play_center", label: "Ludoteche", icon: "🧸" }
 ];
 
@@ -79,22 +91,38 @@ function getEventCategories(event) {
 function matchesAgeRange(eventAgeRange, selectedAge) {
   if (!selectedAge) return true;
   if (eventAgeRange == null || (typeof eventAgeRange === "string" && !eventAgeRange.trim())) return true;
-  if (typeof eventAgeRange !== "string") return false;
+  if (typeof eventAgeRange !== "string") return true;
 
   const normalized = eventAgeRange
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("it-IT");
-  const ages = [...normalized.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(",", ".")));
-  if (!ages.length) return false;
+  const ageMatches = [...normalized.matchAll(/\d+(?:[.,]\d+)?/g)];
+  if (!ageMatches.length) return true;
+
+  const units = ageMatches.map((match, index) => {
+    const suffix = normalized.slice(match.index + match[0].length);
+    const explicitUnit = suffix.match(/^\s*(mesi?|months?|anni?|years?|yrs?)/)?.[1];
+    const inheritedUnit = index < ageMatches.length - 1
+      ? normalized.slice(ageMatches[index + 1].index + ageMatches[index + 1][0].length)
+        .match(/^\s*(mesi?|months?|anni?|years?|yrs?)/)?.[1]
+      : null;
+    const unit = explicitUnit ?? inheritedUnit ?? "anni";
+    return /^(mesi?|months?)/.test(unit) ? 1 / 12 : 1;
+  });
+  const ages = ageMatches.map((match, index) =>
+    Number(match[0].replace(",", ".")) * units[index]
+  );
+  if (ages.some((age) => !Number.isFinite(age))) return true;
 
   const range = AGE_FILTERS.find((item) => item.value === selectedAge);
   if (!range) return true;
 
   const isPlusRange = ages.length === 1 && /(\+|oltre|piu|maggiore|dai|da)\s*\d/.test(normalized);
   const min = isPlusRange ? ages[ages.length - 1] : ages[0];
-  const max = isPlusRange ? Infinity : ages.length > 1 ? ages[1] : min;
-  return min <= range.max && max >= range.min;
+  const max = isPlusRange ? Infinity : ages.length > 1 ? Math.max(ages[0], ages[1]) : min;
+  const lowerBound = isPlusRange ? min : Math.min(ages[0], ages.length > 1 ? ages[1] : ages[0]);
+  return lowerBound <= range.max && max >= range.min;
 }
 
 function HomeApp() {
@@ -143,8 +171,7 @@ function HomeApp() {
   }, []);
 
   const providerCounts = useMemo(() => ({
-    animator: providers.filter((item) => item.provider_kind === "animator").length,
-    party_venue: providers.filter((item) => item.provider_kind === "party_venue").length,
+    feste: providers.filter((item) => canonicalProviderCategory(item.provider_kind) === "feste").length,
     play_center: providers.filter((item) => item.provider_kind === "play_center").length
   }), [providers]);
 
@@ -158,7 +185,7 @@ function HomeApp() {
     ? parks
     : active === "events"
       ? events
-      : providers.filter((item) => item.provider_kind === active);
+      : providers.filter((item) => canonicalProviderCategory(item.provider_kind) === active);
 
   const cities = useMemo(() => {
     const values = currentItems
@@ -179,12 +206,7 @@ function HomeApp() {
   });
 
   const mappedParks = active === "parks"
-    ? filtered.filter((park) =>
-        park.latitudine !== null &&
-        park.longitudine !== null &&
-        Number.isFinite(Number(park.latitudine)) &&
-        Number.isFinite(Number(park.longitudine))
-      )
+    ? filtered.filter(hasCoordinates)
     : [];
 
   function changeTab(key) {
@@ -236,11 +258,6 @@ function HomeApp() {
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
-            {city && (
-              <button className="clear-button" type="button" onClick={() => setCity("")}>
-                Mostra tutti i comuni
-              </button>
-            )}
           </div>
           {active === "events" && (
             <>
@@ -298,7 +315,12 @@ function HomeApp() {
             <MapContainer center={[43.82, 11.08]} zoom={9} className="map">
               <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               {mappedParks.map((park) => (
-                <Marker key={park.id} position={[Number(park.latitudine), Number(park.longitudine)]}>
+                <Marker
+                  key={park.id}
+                  position={[Number(park.latitudine), Number(park.longitudine)]}
+                  icon={parkIcon}
+                  alt="Parco"
+                >
                   <Popup>
                     <strong>{park.nome}</strong><br />
                     📍 {park.comune} ({park.provincia})<br />
@@ -317,16 +339,12 @@ function HomeApp() {
         )}
 
         {!loading && (
-          <section className="results-section">
+          <div className="results-list">
             {active === "events" && <p className="events-shown-count">Mostrati {filtered.length} eventi</p>}
-            <div className="section-heading">
-              <div><span className="eyebrow">SCELTI PER TE</span><h2>{TABS.find((tab) => tab.key === active)?.icon} {TABS.find((tab) => tab.key === active)?.label}</h2></div>
-              <span className="result-pill">{filtered.length} risultati</span>
-            </div>
             <div className="grid">
               {filtered.map((item) => <Card key={item.id} item={item} active={active} onSelectPark={setSelectedPark} />)}
             </div>
-          </section>
+          </div>
         )}
 
         {!loading && filtered.length === 0 && errors.length === 0 && (
@@ -389,12 +407,12 @@ function Card({ item, active, onSelectPark }) {
     );
   }
 
-  const icon = active === "animator" ? "🎈" : active === "party_venue" ? "🏰" : "🧸";
+  const icon = active === "feste" ? "🎉" : "🧸";
   return (
     <article className="content-card provider-card">
       <div className="card-icon">{icon}</div>
       <div className="card-body">
-        <h3>{item.name}</h3>
+        <h3><a className="provider-card-link" href={`/provider/${encodeURIComponent(item.id)}`}>{item.name}</a></h3>
         <p className="location">📍 {item.city} · {item.province}</p>
         {item.services && <p className="description">{item.services}</p>}
         {item.hours && <p>🕒 {item.hours}</p>}
@@ -470,7 +488,19 @@ function ParkDetails({ park, onClose }) {
 }
 
 function hasCoordinates(park) {
-  return park.latitudine !== null && park.longitudine !== null && Number.isFinite(Number(park.latitudine)) && Number.isFinite(Number(park.longitudine));
+  if (park.latitudine == null || park.longitudine == null ||
+      String(park.latitudine).trim() === "" || String(park.longitudine).trim() === "") {
+    return false;
+  }
+
+  const latitude = Number(park.latitudine);
+  const longitude = Number(park.longitudine);
+  return Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180;
 }
 
 function directionsUrl(park) {
@@ -489,5 +519,16 @@ export default function App() {
     return () => window.removeEventListener("popstate", updatePathname);
   }, []);
 
-  return pathname === "/attivita" ? <Activities /> : <HomeApp />;
+  if (pathname === "/attivita") return <Activities />;
+  const providerMatch = pathname.match(/^\/provider\/([^/]+)\/?$/);
+  if (providerMatch) {
+    let providerId;
+    try {
+      providerId = decodeURIComponent(providerMatch[1]);
+    } catch {
+      return <p className="provider-detail-message error" role="alert">Indirizzo provider non valido.</p>;
+    }
+    return <ProviderDetail providerId={providerId} />;
+  }
+  return <HomeApp />;
 }

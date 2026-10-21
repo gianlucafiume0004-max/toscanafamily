@@ -1,15 +1,47 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase.js";
+import {
+  canonicalProviderCategory,
+  providerCategoryName
+} from "../lib/providerCategories.js";
 
-const KIND_LABELS = {
-  animator: "Animatori",
-  party_venue: "Sale feste",
-  play_center: "Ludoteche e centri gioco"
-};
+const PARTY_TYPES = [
+  { label: "Compleanno", keywords: ["compleanno", "birthday"] },
+  { label: "Battesimo", keywords: ["battesimo"] },
+  { label: "Comunione", keywords: ["comunione"] },
+  { label: "Cresima", keywords: ["cresima"] },
+  { label: "Festa privata", keywords: ["festa privata", "evento privato"] },
+  { label: "Festa a tema", keywords: ["festa a tema", "tema"] },
+  { label: "Evento aziendale", keywords: ["aziendale", "corporate"] },
+  { label: "Matrimonio", keywords: ["matrimonio", "wedding"] },
+  { label: "Altro", keywords: [] }
+];
+
+function providerText(provider) {
+  return [provider.provider_kind, provider.name, provider.services, provider.notes]
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it-IT");
+}
+
+function isPartyProvider(provider) {
+  return canonicalProviderCategory(provider.provider_kind) === "feste";
+}
+
+function getPartyTypes(provider) {
+  const text = providerText(provider);
+  const matches = PARTY_TYPES
+    .filter(({ label, keywords }) => label !== "Altro" && keywords.some((keyword) => text.includes(keyword)))
+    .map(({ label }) => label);
+  return matches.length ? matches : ["Altro"];
+}
 
 export default function Activities() {
   const [providers, setProviders] = useState([]);
   const [category, setCategory] = useState("");
+  const [partyType, setPartyType] = useState("");
   const [city, setCity] = useState("");
   const [premiumOnly, setPremiumOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -25,7 +57,7 @@ export default function Activities() {
 
       const { data, error: queryError } = await supabase
         .from("providers")
-        .select("id,provider_kind,name,city,province,services,website,premium")
+        .select("*")
         .order("name", { ascending: true });
 
       if (cancelled) return;
@@ -45,8 +77,10 @@ export default function Activities() {
   }, []);
 
   const categories = useMemo(
-    () => [...new Set(providers.map((provider) => provider.provider_kind).filter(Boolean))]
-      .sort((a, b) => (KIND_LABELS[a] ?? a).localeCompare(KIND_LABELS[b] ?? b, "it")),
+    () => [...new Set(providers
+      .map((provider) => canonicalProviderCategory(provider.provider_kind))
+      .filter(Boolean))]
+      .sort((a, b) => providerCategoryName(a).localeCompare(providerCategoryName(b), "it")),
     [providers]
   );
   const cities = useMemo(
@@ -54,22 +88,32 @@ export default function Activities() {
       .sort((a, b) => a.localeCompare(b, "it")),
     [providers]
   );
+  const showPartyTypeFilter = providers.some((provider) =>
+    (!category || canonicalProviderCategory(provider.provider_kind) === category) &&
+    (!city || provider.city === city) &&
+    isPartyProvider(provider)
+  );
 
   const filteredProviders = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("it-IT");
     return providers
       .filter((provider) => {
-        if (category && provider.provider_kind !== category) return false;
+        if (category && canonicalProviderCategory(provider.provider_kind) !== category) return false;
         if (city && provider.city !== city) return false;
+        if (partyType && (!isPartyProvider(provider) || !getPartyTypes(provider).includes(partyType))) return false;
         if (premiumOnly && !provider.premium) return false;
         if (!query) return true;
-        return [provider.name, provider.provider_kind, provider.city, provider.services]
+        return [provider.name, canonicalProviderCategory(provider.provider_kind), provider.city, provider.services]
           .filter(Boolean)
           .some((value) => value.toLocaleLowerCase("it-IT").includes(query));
       })
       .sort((a, b) => Number(Boolean(b.premium)) - Number(Boolean(a.premium)) ||
         (a.name ?? "").localeCompare(b.name ?? "", "it"));
-  }, [providers, category, city, premiumOnly, search]);
+  }, [providers, category, city, partyType, premiumOnly, search]);
+
+  useEffect(() => {
+    if (!showPartyTypeFilter) setPartyType("");
+  }, [showPartyTypeFilter]);
 
   return (
     <div className="activities-page">
@@ -77,7 +121,7 @@ export default function Activities() {
         <a className="activities-brand" href="/">ToscanaFamily</a>
         <span className="activities-eyebrow">SCOPRI IL TERRITORIO</span>
         <h1>Attività per tutta la famiglia</h1>
-        <p>Animatori, spazi gioco e servizi per organizzare momenti speciali.</p>
+        <p>Feste, spazi gioco e servizi per organizzare momenti speciali.</p>
       </header>
 
       <nav className="activities-nav" aria-label="Menu principale">
@@ -88,16 +132,6 @@ export default function Activities() {
       <main className="activities-main">
         <section className="activities-filters" aria-label="Filtri attività">
           <label>
-            <span>Categoria</span>
-            <select value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="">Tutte le categorie</option>
-              {categories.map((kind) => (
-                <option key={kind} value={kind}>{KIND_LABELS[kind] ?? kind}</option>
-              ))}
-            </select>
-          </label>
-
-          <label>
             <span>Comune</span>
             <select value={city} onChange={(event) => setCity(event.target.value)}>
               <option value="">Tutti i comuni</option>
@@ -105,14 +139,25 @@ export default function Activities() {
             </select>
           </label>
 
-          <label className="activities-premium-filter">
-            <input
-              type="checkbox"
-              checked={premiumOnly}
-              onChange={(event) => setPremiumOnly(event.target.checked)}
-            />
-            <span>Solo Premium</span>
+          <label>
+            <span>Categoria</span>
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              <option value="">Tutte le categorie</option>
+              {categories.map((kind) => (
+                <option key={kind} value={kind}>{providerCategoryName(kind)}</option>
+              ))}
+            </select>
           </label>
+
+          {showPartyTypeFilter && (
+            <label>
+              <span>Tipo di festa</span>
+              <select value={partyType} onChange={(event) => setPartyType(event.target.value)}>
+                <option value="">Tutte</option>
+                {PARTY_TYPES.map(({ label }) => <option key={label} value={label}>{label}</option>)}
+              </select>
+            </label>
+          )}
 
           <label className="activities-search">
             <span>Ricerca libera</span>
@@ -122,6 +167,15 @@ export default function Activities() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Nome, servizio o comune"
             />
+          </label>
+
+          <label className="activities-premium-filter">
+            <input
+              type="checkbox"
+              checked={premiumOnly}
+              onChange={(event) => setPremiumOnly(event.target.checked)}
+            />
+            <span>Solo Premium</span>
           </label>
         </section>
 
@@ -139,11 +193,11 @@ export default function Activities() {
                 <article className="activity-card" key={provider.id}>
                   <div className="activity-card-heading">
                     <span className="activity-kind">
-                      {KIND_LABELS[provider.provider_kind] ?? provider.provider_kind}
+                      {providerCategoryName(canonicalProviderCategory(provider.provider_kind))}
                     </span>
                     {provider.premium && <span className="activity-premium">Premium</span>}
                   </div>
-                  <h2>{provider.name}</h2>
+                  <h2><a className="provider-card-link" href={`/provider/${encodeURIComponent(provider.id)}`}>{provider.name}</a></h2>
                   <p className="activity-city">
                     {[provider.city, provider.province].filter(Boolean).join(" · ")}
                   </p>

@@ -5,11 +5,17 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PROVIDER_KIND_MAP = new Map([
-  ["animator", "animator"],
-  ["inflatable_rental", "animator"],
-  ["photographer", "animator"],
-  ["catering", "animator"],
-  ["party_room", "party_venue"],
+  ["feste", "feste"],
+  ["animator", "feste"],
+  ["animatori", "feste"],
+  ["party_room", "feste"],
+  ["party_venue", "feste"],
+  ["sale-feste", "feste"],
+  ["sale_feste", "feste"],
+  ["sale feste", "feste"],
+  ["inflatable_rental", "feste"],
+  ["photographer", "feste"],
+  ["catering", "feste"],
   ["playroom", "play_center"],
   ["baby_parking", "play_center"],
   ["creative_workshop", "play_center"],
@@ -235,16 +241,17 @@ function normalizeProvider(row) {
   const name = normalizeText(row.name);
   const providerType = normalizeText(row.provider_type);
   const city = normalizeText(row.city);
+  const providerTypeKey = providerType?.toLocaleLowerCase("it-IT");
 
   if (!name) throw new Error("name obbligatorio");
-  if (!providerType || !PROVIDER_KIND_MAP.has(providerType)) {
+  if (!providerTypeKey || !PROVIDER_KIND_MAP.has(providerTypeKey)) {
     throw new Error("provider_type non valido");
   }
   if (!city) throw new Error("city obbligatoria");
 
   return {
     name,
-    provider_kind: PROVIDER_KIND_MAP.get(providerType),
+    provider_kind: PROVIDER_KIND_MAP.get(providerTypeKey),
     city,
     province: normalizeText(row.province),
     services: normalizeArray(row.categories, "categories").join("; ") || null,
