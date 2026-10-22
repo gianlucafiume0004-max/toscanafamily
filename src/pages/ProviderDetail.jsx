@@ -5,28 +5,42 @@ import {
   providerCategoryName
 } from "../lib/providerCategories.js";
 
+function asText(value) {
+  if (value == null) return "";
+  return String(value).trim();
+}
+
 function phoneHref(value) {
-  if (!value) return "";
-  const trimmed = value.trim();
+  const trimmed = asText(value);
+  if (!trimmed) return "";
+
   const digits = trimmed.replace(/\D/g, "");
   if (!digits) return "";
-  return `tel:${trimmed.startsWith("+") ? "+" : ""}${digits}`;
+
+  const prefersInternational = trimmed.startsWith("+") || trimmed.startsWith("00");
+  const normalizedDigits = digits.replace(/^00/, "");
+  return `tel:${prefersInternational ? `+${normalizedDigits}` : normalizedDigits}`;
 }
 
 function whatsappHref(value) {
-  if (!value) return "";
-  const trimmed = value.trim();
+  const trimmed = asText(value);
+  if (!trimmed) return "";
+
   let number = trimmed.replace(/\D/g, "");
   if (!number) return "";
+
   if (number.startsWith("00")) number = number.slice(2);
   else if (!trimmed.startsWith("+") && !number.startsWith("39")) number = `39${number}`;
+
   return `https://wa.me/${number}?text=Ciao%20ti%20ho%20trovato%20su%20ToscanaFamily`;
 }
 
 function websiteHref(value) {
-  if (!value) return "";
+  const trimmed = asText(value);
+  if (!trimmed) return "";
+
   try {
-    const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     const url = new URL(candidate);
     return ["http:", "https:"].includes(url.protocol) ? url.href : "";
   } catch {
@@ -43,12 +57,20 @@ export default function ProviderDetail({ providerId }) {
     let cancelled = false;
 
     async function loadProvider() {
+      const normalizedProviderId = asText(providerId);
+      if (!normalizedProviderId) {
+        setProvider(null);
+        setLoading(false);
+        setError("Il profilo provider non è stato trovato.");
+        return;
+      }
+
       setLoading(true);
       setError("");
       const { data, error: queryError } = await supabase
         .from("providers")
         .select("*")
-        .eq("id", providerId)
+        .eq("id", normalizedProviderId)
         .maybeSingle();
 
       if (cancelled) return;
@@ -68,11 +90,13 @@ export default function ProviderDetail({ providerId }) {
     };
   }, [providerId]);
 
-  const phone = provider?.phone?.trim() ?? "";
-  const whatsapp = whatsappHref(provider?.whatsapp || phone);
+  const phone = asText(provider?.phone);
+  const whatsappValue = asText(provider?.whatsapp || phone);
+  const whatsapp = whatsappHref(whatsappValue);
   const telephone = phoneHref(phone);
-  const website = websiteHref(provider?.website);
-  const description = provider?.description || provider?.notes || provider?.services;
+  const websiteValue = asText(provider?.website);
+  const website = websiteHref(websiteValue);
+  const description = asText(provider?.description || provider?.notes || provider?.services);
   const category = providerCategoryName(canonicalProviderCategory(provider?.provider_kind));
 
   return (
@@ -100,11 +124,11 @@ export default function ProviderDetail({ providerId }) {
               <p className="provider-detail-city">📍 {[provider.city, provider.province].filter(Boolean).join(" · ")}</p>
             )}
             {phone && <p className="provider-detail-contact"><strong>Telefono</strong><a href={telephone}>{phone}</a></p>}
-            {(provider.whatsapp || phone) && (
-              <p className="provider-detail-contact"><strong>WhatsApp</strong><a href={whatsapp} target="_blank" rel="noreferrer">{provider.whatsapp || phone}</a></p>
+            {whatsappValue && (
+              <p className="provider-detail-contact"><strong>WhatsApp</strong><a href={whatsapp} target="_blank" rel="noreferrer">{whatsappValue}</a></p>
             )}
-            {website && (
-              <p className="provider-detail-contact"><strong>Sito web</strong><a href={website} target="_blank" rel="noopener noreferrer">{provider.website}</a></p>
+            {websiteValue && (
+              <p className="provider-detail-contact"><strong>Sito web</strong><a href={website} target="_blank" rel="noopener noreferrer">{websiteValue}</a></p>
             )}
           </div>
         </article>
