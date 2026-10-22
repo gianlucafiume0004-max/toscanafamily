@@ -6,36 +6,24 @@ import {
 } from "../lib/providerCategories.js";
 
 const PARTY_TYPES = [
-  { label: "Compleanno", keywords: ["compleanno", "birthday"] },
-  { label: "Battesimo", keywords: ["battesimo"] },
-  { label: "Comunione", keywords: ["comunione"] },
-  { label: "Cresima", keywords: ["cresima"] },
-  { label: "Festa privata", keywords: ["festa privata", "evento privato"] },
-  { label: "Festa a tema", keywords: ["festa a tema", "tema"] },
-  { label: "Evento aziendale", keywords: ["aziendale", "corporate"] },
-  { label: "Matrimonio", keywords: ["matrimonio", "wedding"] },
-  { label: "Altro", keywords: [] }
+  { value: "animatore", label: "Animatori" },
+  { value: "sala_feste", label: "Sale Feste" }
 ];
 
-function providerText(provider) {
-  return [provider.provider_kind, provider.name, provider.services, provider.notes]
-    .filter(Boolean)
-    .join(" ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("it-IT");
+function normalizeFilterValue(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
-function isPartyProvider(provider) {
-  return canonicalProviderCategory(provider.provider_kind) === "feste";
+function normalizedProviderKind(provider) {
+  return normalizeFilterValue(provider.provider_kind);
 }
 
-function getPartyTypes(provider) {
-  const text = providerText(provider);
-  const matches = PARTY_TYPES
-    .filter(({ label, keywords }) => label !== "Altro" && keywords.some((keyword) => text.includes(keyword)))
-    .map(({ label }) => label);
-  return matches.length ? matches : ["Altro"];
+function providerCategory(provider) {
+  return canonicalProviderCategory(normalizedProviderKind(provider));
+}
+
+function normalizedPartyType(provider) {
+  return normalizeFilterValue(provider.party_type);
 }
 
 export default function Activities() {
@@ -57,7 +45,7 @@ export default function Activities() {
 
       const { data, error: queryError } = await supabase
         .from("providers")
-        .select("*")
+        .select("id, name, provider_kind, party_type, city, province, services, website, premium")
         .order("name", { ascending: true });
 
       if (cancelled) return;
@@ -78,7 +66,7 @@ export default function Activities() {
 
   const categories = useMemo(
     () => [...new Set(providers
-      .map((provider) => canonicalProviderCategory(provider.provider_kind))
+      .map(providerCategory)
       .filter(Boolean))]
       .sort((a, b) => providerCategoryName(a).localeCompare(providerCategoryName(b), "it")),
     [providers]
@@ -88,32 +76,43 @@ export default function Activities() {
       .sort((a, b) => a.localeCompare(b, "it")),
     [providers]
   );
-  const showPartyTypeFilter = providers.some((provider) =>
-    (!category || canonicalProviderCategory(provider.provider_kind) === category) &&
-    (!city || provider.city === city) &&
-    isPartyProvider(provider)
-  );
-
   const filteredProviders = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("it-IT");
-    return providers
+    const selectedCategory = normalizeFilterValue(category);
+    const selectedPartyType = normalizeFilterValue(partyType);
+    const results = providers
       .filter((provider) => {
-        if (category && canonicalProviderCategory(provider.provider_kind) !== category) return false;
+        const providerKind = normalizedProviderKind(provider);
+        const normalizedCategory = canonicalProviderCategory(providerKind);
+
+        if (selectedCategory && normalizedCategory !== selectedCategory) return false;
+        if (
+          selectedCategory === "feste" &&
+          selectedPartyType &&
+          normalizedPartyType(provider) !== selectedPartyType
+        ) return false;
         if (city && provider.city !== city) return false;
-        if (partyType && (!isPartyProvider(provider) || !getPartyTypes(provider).includes(partyType))) return false;
         if (premiumOnly && !provider.premium) return false;
         if (!query) return true;
-        return [provider.name, canonicalProviderCategory(provider.provider_kind), provider.city, provider.services]
+        return [provider.name, providerCategory(provider), provider.city, provider.services]
           .filter(Boolean)
           .some((value) => value.toLocaleLowerCase("it-IT").includes(query));
       })
       .sort((a, b) => Number(Boolean(b.premium)) - Number(Boolean(a.premium)) ||
         (a.name ?? "").localeCompare(b.name ?? "", "it"));
+
+    console.log("Feste filter diagnostic", {
+      selectedCategory,
+      selectedPartyType,
+      providersCount: providers.length,
+      filteredProvidersCount: results.length
+    });
+    return results;
   }, [providers, category, city, partyType, premiumOnly, search]);
 
   useEffect(() => {
-    if (!showPartyTypeFilter) setPartyType("");
-  }, [showPartyTypeFilter]);
+    if (normalizeFilterValue(category) !== "feste") setPartyType("");
+  }, [category]);
 
   return (
     <div className="activities-page">
@@ -149,12 +148,14 @@ export default function Activities() {
             </select>
           </label>
 
-          {showPartyTypeFilter && (
+          {category === "feste" && (
             <label>
-              <span>Tipo di festa</span>
+              <span>Categoria</span>
               <select value={partyType} onChange={(event) => setPartyType(event.target.value)}>
-                <option value="">Tutte</option>
-                {PARTY_TYPES.map(({ label }) => <option key={label} value={label}>{label}</option>)}
+                <option value="">Tutti</option>
+                {PARTY_TYPES.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
           )}
@@ -193,7 +194,7 @@ export default function Activities() {
                 <article className="activity-card" key={provider.id}>
                   <div className="activity-card-heading">
                     <span className="activity-kind">
-                      {providerCategoryName(canonicalProviderCategory(provider.provider_kind))}
+                      {providerCategoryName(providerCategory(provider))}
                     </span>
                     {provider.premium && <span className="activity-premium">Premium</span>}
                   </div>

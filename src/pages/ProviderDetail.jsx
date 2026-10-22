@@ -52,6 +52,8 @@ export default function ProviderDetail({ providerId }) {
   const [provider, setProvider] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [similarProviders, setSimilarProviders] = useState([]);
+  const [similarError, setSimilarError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +91,50 @@ export default function ProviderDetail({ providerId }) {
       cancelled = true;
     };
   }, [providerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSimilarProviders() {
+      if (!provider || String(provider.id) !== asText(providerId)) {
+        setSimilarProviders([]);
+        setSimilarError("");
+        return;
+      }
+
+      const categoryId = canonicalProviderCategory(provider.provider_kind);
+      if (!categoryId) {
+        setSimilarProviders([]);
+        setSimilarError("");
+        return;
+      }
+
+      setSimilarProviders([]);
+      setSimilarError("");
+      const { data, error: queryError } = await supabase
+        .from("providers")
+        .select("id, name, city, provider_kind")
+        .order("name", { ascending: true });
+
+      if (cancelled) return;
+      if (queryError) {
+        setSimilarError(`Impossibile caricare i provider simili: ${queryError.message}`);
+        return;
+      }
+
+      setSimilarProviders((data ?? [])
+        .filter((candidate) =>
+          String(candidate.id) !== String(provider.id) &&
+          canonicalProviderCategory(candidate.provider_kind) === categoryId
+        )
+        .slice(0, 3));
+    }
+
+    loadSimilarProviders();
+    return () => {
+      cancelled = true;
+    };
+  }, [provider, providerId]);
 
   const phone = asText(provider?.phone);
   const whatsappValue = asText(provider?.whatsapp || phone);
@@ -146,6 +192,28 @@ export default function ProviderDetail({ providerId }) {
             ? <a className="provider-cta website" href={website} target="_blank" rel="noopener noreferrer">Sito web</a>
             : <span className="provider-cta disabled" aria-disabled="true">Sito web</span>}
         </nav>
+      )}
+
+      {!loading && !error && similarError && (
+        <p className="provider-detail-message error" role="alert">{similarError}</p>
+      )}
+
+      {!loading && !error && similarProviders.length > 0 && (
+        <section className="provider-detail-similar" aria-labelledby="provider-similar-title">
+          <h2 id="provider-similar-title">Provider simili</h2>
+          <div className="provider-similar-grid">
+            {similarProviders.map((similarProvider) => (
+              <a
+                className="provider-similar-card"
+                key={similarProvider.id}
+                href={`/provider/${encodeURIComponent(similarProvider.id)}`}
+              >
+                <strong>{similarProvider.name}</strong>
+                <span>📍 {asText(similarProvider.city) || "Comune non indicato"}</span>
+              </a>
+            ))}
+          </div>
+        </section>
       )}
     </main>
   );
