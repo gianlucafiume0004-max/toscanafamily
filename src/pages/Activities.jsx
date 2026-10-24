@@ -7,7 +7,7 @@ import {
 
 const PARTY_TYPES = [
   { value: "animatore", label: "Animatori" },
-  { value: "sala_feste", label: "Sale Feste" }
+  { value: "sala_feste", label: "Sale Feste / Eventi" }
 ];
 
 function normalizeFilterValue(value) {

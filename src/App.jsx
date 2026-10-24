@@ -6,9 +6,8 @@ import Parks from "./pages/Parks.jsx";
 import { canonicalProviderCategory } from "./lib/providerCategories.js";
 
 const PARTY_PROVIDER_TYPES = [
-  { value: "animator", label: "Animatori" },
-  { value: "venue", label: "Sale Feste / Eventi" },
-  { value: "animator_and_venue", label: "Animatori e Sale Feste" }
+  { value: "animatore", label: "Animatori" },
+  { value: "sala_feste", label: "Sale Feste / Eventi" }
 ];
 
 const PARTY_KIND_ALIASES = new Map([
@@ -32,6 +31,12 @@ function partyProviderKind(provider) {
     ? provider.provider_kind.trim().toLocaleLowerCase("it-IT").replace(/[\s-]+/g, "_")
     : "";
   return PARTY_KIND_ALIASES.get(kind) ?? "";
+}
+
+function normalizedPartyType(provider) {
+  return typeof provider.party_type === "string"
+    ? provider.party_type.trim().toLocaleLowerCase("it-IT")
+    : "";
 }
 
 function isPartyProvider(provider) {
@@ -216,7 +221,7 @@ function HomeApp() {
     const itemCity = active === "parks" ? item.comune : item.city;
     if (city && itemCity !== city) return false;
     if (active === "feste") {
-      if (providerType && partyProviderKind(item) !== providerType) return false;
+      if (providerType && normalizedPartyType(item) !== providerType) return false;
     }
     if (active !== "events") return true;
     if (eventCategory && !getEventCategories(item).includes(eventCategory)) return false;
