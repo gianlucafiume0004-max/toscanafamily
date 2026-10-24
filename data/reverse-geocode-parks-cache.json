@@ -1,0 +1,277 @@
+{
+  "43.9317743,11.0315758": {
+    "status": "success",
+    "values": {
+      "comune": "Montemurlo",
+      "indirizzo": "Via Gianni Rodari",
+      "provincia": "Prato"
+    },
+    "displayName": "Via Gianni Rodari, Montemurlo, Prato, Toscana, 59013, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T10:55:30.953Z"
+  },
+  "43.6599780,10.6782008": {
+    "status": "success",
+    "values": {
+      "comune": "Pontedera",
+      "indirizzo": "Via Tosco Romagnola Est",
+      "provincia": "Pisa"
+    },
+    "displayName": "Via Tosco Romagnola Est, La Rotta, Pontedera, Pisa, Toscana, 56025, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T10:55:32.032Z"
+  },
+  "43.5733100,11.3876239": {
+    "status": "success",
+    "values": {
+      "comune": "Greve in Chianti",
+      "indirizzo": "Via del Centro",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via del Centro, Dimezzano, Lucolena in Chianti, Greve in Chianti, Firenze, Toscana, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T10:55:33.110Z"
+  },
+  "43.7826027,11.1028396": {
+    "status": "success",
+    "values": {
+      "comune": "Signa",
+      "indirizzo": "Pista ciclabile dei Renai",
+      "provincia": "Firenze"
+    },
+    "displayName": "Pista ciclabile dei Renai, Signa, Firenze, Toscana, 50058, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T10:55:33.791Z"
+  },
+  "43.7706926,11.2253937": {
+    "status": "success",
+    "values": {
+      "comune": "Firenze",
+      "indirizzo": "Viale Don Antonio Sani",
+      "provincia": "Firenze"
+    },
+    "displayName": "Viale Don Antonio Sani, Monticelli, Isolotto, Quartiere 4, Firenze, Toscana, 50143, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T10:55:35.000Z"
+  },
+  "43.6894449,10.8899117": {
+    "status": "success",
+    "values": {
+      "comune": "San Miniato",
+      "indirizzo": "Via delle Camelie",
+      "provincia": "Pisa"
+    },
+    "displayName": "Via delle Camelie, Montorzo, Ponte a Elsa, San Miniato, Pisa, Toscana, 56028, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:08.271Z"
+  },
+  "43.6509312,10.7447392": {
+    "status": "success",
+    "values": {
+      "comune": "Montopoli in Val d'Arno",
+      "indirizzo": "Via Immaginetta",
+      "provincia": "Pisa"
+    },
+    "displayName": "Via Immaginetta, Marti, Gasparrino, Marti, Montopoli in Val d'Arno, Pisa, Toscana, 56024, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:09.098Z"
+  },
+  "43.7800878,11.4472468": {
+    "status": "success",
+    "values": {
+      "comune": "San Francesco",
+      "indirizzo": "Via Forlivese",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via Forlivese, San Francesco, Pelago, Unione di Comuni Valdarno e Valdisieve, Firenze, Toscana, 50065, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:10.308Z"
+  },
+  "43.8691228,10.7541639": {
+    "status": "success",
+    "values": {
+      "comune": "Traversagna",
+      "indirizzo": "Via Giovanni Giolitti",
+      "provincia": "Pistoia"
+    },
+    "displayName": "Via Giovanni Giolitti, Biscolla, Traversagna, Massa e Cozzile, Pistoia, Toscana, 51001, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:11.278Z"
+  },
+  "43.6570715,10.6816921": {
+    "status": "success",
+    "values": {
+      "comune": "Pontedera",
+      "indirizzo": "Via Caprera",
+      "provincia": "Pisa"
+    },
+    "displayName": "Via Caprera, La Rotta, Pontedera, Pisa, Toscana, 56025, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:12.956Z"
+  },
+  "43.7945175,11.1877814": {
+    "status": "success",
+    "values": {
+      "comune": "Firenze",
+      "indirizzo": "Via del Canale",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via del Canale, Petriolo, Peretola, Quartiere 5, Mantignano, Firenze, Toscana, 50145, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:13.540Z"
+  },
+  "44.1702570,11.2154433": {
+    "status": "success",
+    "values": {
+      "comune": "Pian Del Voglio",
+      "indirizzo": "Via dei Castagnoli",
+      "provincia": "Bologna"
+    },
+    "displayName": "Via dei Castagnoli, La Rovina, Canova, Pian Del Voglio, San Benedetto Val di Sambro, Unione dell'Appennino Bolognese, Bologna, Emilia-Romagna, 40048, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:14.678Z"
+  },
+  "43.8672318,11.1670346": {
+    "status": "success",
+    "values": {
+      "comune": "Calenzano",
+      "indirizzo": "Via delle Bartoline",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via delle Bartoline, Colle di Sotto, Calenzano, Firenze, Toscana, 50041, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:15.708Z"
+  },
+  "43.7795247,10.7993305": {
+    "status": "success",
+    "values": {
+      "comune": "Fucecchio",
+      "indirizzo": "Via degli Aironi",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via degli Aironi, Cavallaia, Massarella, Fucecchio, Unione dei Comuni Circondario dell'Empolese Valdelsa, Firenze, Toscana, 50054, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:17.359Z"
+  },
+  "43.7544042,11.1893275": {
+    "status": "success",
+    "values": {
+      "comune": "Scandicci",
+      "indirizzo": "Piazza Piave",
+      "provincia": "Firenze"
+    },
+    "displayName": "Piazza Piave, Scandicci Alto, Casellina, Scandicci, Firenze, Toscana, 50018, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:18.067Z"
+  },
+  "43.6756716,10.6911533": {
+    "status": "success",
+    "values": {
+      "comune": "Santa Maria a Monte",
+      "indirizzo": "Via San Donato",
+      "provincia": "Pisa"
+    },
+    "displayName": "Via San Donato, San Donato, Santa Maria a Monte, Pisa, Toscana, 56020, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:18.999Z"
+  },
+  "43.8014938,11.0751318": {
+    "status": "success",
+    "values": {
+      "comune": "Signa",
+      "indirizzo": "Via Ruggero Bardazzi",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via Ruggero Bardazzi, Lecore, Poggio Nuovo, Signa, Firenze, Toscana, 59016, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:20.072Z"
+  },
+  "43.9389561,11.3034457": {
+    "status": "success",
+    "values": {
+      "comune": "Scarperia e San Piero",
+      "indirizzo": "Via Bolognese",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via Bolognese, Campomigliaio, Scarperia e San Piero, Unione Montana dei Comuni del Mugello, Firenze, Toscana, 50038, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:21.196Z"
+  },
+  "43.8710844,11.0556821": {
+    "status": "success",
+    "values": {
+      "comune": "Prato",
+      "indirizzo": "Via Vulcano",
+      "provincia": "Prato"
+    },
+    "displayName": "Via Vulcano, Tobbiana, Prato, Toscana, 59100, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:22.392Z"
+  },
+  "43.9433714,10.9135876": {
+    "status": "success",
+    "values": {
+      "comune": "Pistoia",
+      "indirizzo": "Via Marino Marini",
+      "provincia": "Pistoia"
+    },
+    "displayName": "Via Marino Marini, Casermette, Capostrada, Pistoia, Toscana, 51100, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:23.723Z"
+  },
+  "43.5990552,10.9677996": {
+    "status": "success",
+    "values": {
+      "comune": "Castelfiorentino",
+      "indirizzo": "Via Salvador Allende",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via Salvador Allende, Profeti, Castelfiorentino, Unione dei Comuni Circondario dell'Empolese Valdelsa, Firenze, Toscana, 50051, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:24.537Z"
+  },
+  "43.7927627,11.1929699": {
+    "status": "success",
+    "values": {
+      "comune": "Firenze",
+      "indirizzo": "Via Piemonte",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via Piemonte, Petriolo, Peretola, Quartiere 5, Mantignano, Firenze, Toscana, 50145, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:26.195Z"
+  },
+  "43.6018048,11.4125395": {
+    "status": "success",
+    "values": {
+      "comune": "Figline e Incisa Valdarno",
+      "indirizzo": "Via del Valico",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via del Valico, Ponte Agli Stolli, Figline e Incisa Valdarno, Firenze, Toscana, 50063, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:26.796Z"
+  },
+  "43.7404403,10.8133316": {
+    "status": "success",
+    "values": {
+      "comune": "Fucecchio",
+      "indirizzo": "Via Niccolò Copernico",
+      "provincia": "Firenze"
+    },
+    "displayName": "Via Niccolò Copernico, Porto dei Pescatori, Le Botteghe, Fucecchio, Unione dei Comuni Circondario dell'Empolese Valdelsa, Firenze, Toscana, 50054, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:27.950Z"
+  },
+  "43.8538336,10.7482957": {
+    "status": "success",
+    "values": {
+      "comune": "Ponte Buggianese",
+      "indirizzo": "Via Camporcioni Est",
+      "provincia": "Pistoia"
+    },
+    "displayName": "Via Camporcioni Est, Casabianca, Ponte Buggianese, Pistoia, Toscana, 51019, Italia",
+    "error": null,
+    "cachedAt": "2026-10-24T11:03:28.986Z"
+  }
+}

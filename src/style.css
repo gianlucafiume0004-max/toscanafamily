@@ -299,19 +299,31 @@ footer { margin-top: 34px; padding: 30px 22px; text-align: center; color: #63756
   background: white;
   box-shadow: var(--shadow);
 }
-.search-panel.city-filter-panel.event-filters > .city-filter-wrapper {
+.search-panel.city-filter-panel.park-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 18px;
+  padding: 18px;
+  border-radius: 22px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+.search-panel.city-filter-panel > .city-filter-wrapper {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 7px;
   visibility: visible;
 }
-.event-filters .search-label {
+.city-filter-panel .search-label {
   display: block;
   color: #375047;
   font-weight: 800;
 }
-.event-filters .town-select {
+.city-filter-panel .town-select {
   display: block;
   width: 100%;
   min-width: 0;
@@ -323,7 +335,7 @@ footer { margin-top: 34px; padding: 30px 22px; text-align: center; color: #63756
   background: white;
   box-shadow: 0 6px 18px rgba(0,0,0,.06);
 }
-.event-filters .town-select:focus {
+.city-filter-panel .town-select:focus {
   border-color: var(--blue);
   outline: none;
   box-shadow: 0 0 0 4px rgba(36,169,216,.15);

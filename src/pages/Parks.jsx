@@ -24,11 +24,15 @@ export default function Parks({ parks, hasError }) {
   const [selectedPark, setSelectedPark] = useState(null);
 
   const cities = useMemo(
-    () => [...new Set(parks.map((park) => park.comune).filter(Boolean))]
+    () => [...new Set(parks
+      .map((park) => typeof park.comune === "string" ? park.comune.trim() : "")
+      .filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, "it")),
     [parks]
   );
-  const filteredParks = parks.filter((park) => !city || park.comune === city);
+  const filteredParks = parks.filter((park) =>
+    !city || (typeof park.comune === "string" && park.comune.trim() === city)
+  );
   const mappedParks = filteredParks.filter(hasCoordinates);
 
   useEffect(() => {
@@ -39,7 +43,7 @@ export default function Parks({ parks, hasError }) {
 
   return (
     <>
-      <section className="search-panel">
+      <section className="search-panel city-filter-panel park-filters">
         <div className="city-filter-wrapper">
           <label className="search-label" htmlFor="park-city-filter">📍 Comune</label>
           <select
@@ -72,7 +76,7 @@ export default function Parks({ parks, hasError }) {
               alt="Parco"
             >
               <Popup>
-                <strong>{park.nome}</strong><br />
+                <strong>{displayParkName(park)}</strong><br />
                 📍 {park.comune} ({park.provincia})<br />
                 🚻 {park.bagni || "Da verificare"}<br />
                 🅿️ {park.parcheggio || "Da verificare"}<br />
@@ -128,7 +132,7 @@ function ParkCard({ park, onSelect }) {
     >
       <div className="card-icon">🌳</div>
       <div className="card-body">
-        <h3>{park.nome}</h3>
+        <h3>{displayParkName(park)}</h3>
         <p className="location">📍 {park.comune} · {park.provincia}</p>
         <div className="chips">
           <span>🚻 {park.bagni || "Da verificare"}</span>
@@ -207,7 +211,7 @@ function ParkDetails({ park, onClose }) {
           <span>🌳</span>
           <div>
             <small>SCHEDA PARCO</small>
-            <h2 id="park-title">{park.nome}</h2>
+            <h2 id="park-title">{displayParkName(park)}</h2>
             <p>📍 {park.comune} · {park.provincia}</p>
           </div>
         </div>
@@ -237,6 +241,33 @@ function ParkDetails({ park, onClose }) {
       </section>
     </div>
   );
+}
+
+function displayParkName(park) {
+  const name = typeof park.nome === "string" ? park.nome.trim() : "";
+  const normalizedName = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it-IT")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalizedName !== "area gioco" && normalizedName !== "area giochi") return park.nome;
+
+  const address = typeof park.indirizzo === "string" ? park.indirizzo.trim() : "";
+  const city = typeof park.comune === "string" ? park.comune.trim() : "";
+  const location = [address, city].find((value) =>
+    value && !["-", "n/a", "non disponibile", "da verificare"].includes(value.toLocaleLowerCase("it-IT"))
+  );
+  if (location) return `Area giochi · ${location}`;
+
+  const latitude = Number(park.latitudine);
+  const longitude = Number(park.longitudine);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    return `Area giochi · ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+  }
+  return "Area giochi · località non disponibile";
 }
 
 function hasCoordinates(park) {
