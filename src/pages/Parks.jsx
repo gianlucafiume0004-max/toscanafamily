@@ -20,11 +20,23 @@ const parkIcon = L.icon({
   alt: "Parco"
 });
 
+const parkServiceFields = [
+  ["bagni", "🚻 Bagni", "bagni"],
+  ["parcheggio", "🅿️ Parcheggio", "parcheggio"],
+  ["fontanella", "💧 Fontanella", "fontanella"],
+  ["area_picnic", "🧺 Area picnic", "area_picnic"],
+  ["area_cani", "🐕 Area cani", "area_cani"],
+  ["accessibilita", "♿ Accessibilità", "accessibilita"],
+  ["altri_servizi", "🛝 Altri servizi", null],
+  ["presenza_fumatori", "🚬 Presenza fumatori", "fumatori_stato"]
+];
+
 export default function Parks({ parks, hasError }) {
   const [city, setCity] = useState("");
   const [selectedPark, setSelectedPark] = useState(null);
   const [parkRatings, setParkRatings] = useState({});
   const [parkRatingStats, setParkRatingStats] = useState({});
+  const [parkServiceSelections, setParkServiceSelections] = useState({});
 
   const visibleParks = useMemo(
     () => parks.filter((park) =>
@@ -209,7 +221,18 @@ export default function Parks({ parks, hasError }) {
       )}
 
       {selectedPark && (
-        <ParkDetails park={selectedPark} onClose={() => setSelectedPark(null)} />
+        <ParkDetails
+          park={selectedPark}
+          serviceSelections={parkServiceSelections[selectedPark.id] || {}}
+          onServiceSelectionChange={(field, value) => setParkServiceSelections((current) => ({
+            ...current,
+            [selectedPark.id]: {
+              ...current[selectedPark.id],
+              [field]: value
+            }
+          }))}
+          onClose={() => setSelectedPark(null)}
+        />
       )}
     </>
   );
@@ -338,7 +361,7 @@ function getParkVisualType(park) {
   return "other";
 }
 
-function ParkDetails({ park, onClose }) {
+function ParkDetails({ park, serviceSelections, onServiceSelectionChange, onClose }) {
   useEffect(() => {
     function closeWithEscape(event) {
       if (event.key === "Escape") onClose();
@@ -368,6 +391,9 @@ function ParkDetails({ park, onClose }) {
     ["✅ Stato", park.stato]
   ].filter(([, value]) => isUsefulDetailValue(value));
   const location = [park.comune, park.provincia].filter(isUsefulDetailValue).join(" · ");
+  const parkNotes = typeof park.note === "string"
+    ? park.note.split(/\r?\n/).filter((line) => !/^\s*Fonte\s*:/i.test(line)).join("\n").trim()
+    : "";
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -394,23 +420,71 @@ function ParkDetails({ park, onClose }) {
             </div>
           ))}
         </div>
-        {isUsefulDetailValue(park.note) && (
-          <div className="park-notes"><strong>📝 Informazioni</strong><p>{park.note}</p></div>
+        {parkNotes && (
+          <div className="park-notes"><strong>📝 Informazioni</strong><p>{parkNotes}</p></div>
         )}
         <div className="park-notes">
           <p>🌱 Conosci questo parco? Aiutaci ad aggiornarlo!</p>
-          <p>Sei stato qui con la tua famiglia? Condividi quello che sai. Segnalaci la presenza di bagni, parcheggio, fontanella, area picnic, area cani, accessibilità e altri servizi.</p>
+          <p>Condividi ciò che sai e aiuta altre famiglie.</p>
           <p>Il tuo contributo può essere utile ad altre famiglie. 💚</p>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
+            gap: "8px",
+            marginTop: "14px"
+          }}>
+            {parkServiceFields
+              .filter(([field, , parkField]) =>
+                field === "altri_servizi" || !isUsefulDetailValue(park[parkField])
+              )
+              .map(([field, label]) => (
+                <div
+                  key={field}
+                  role="group"
+                  aria-label={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "6px",
+                    padding: "8px",
+                    borderRadius: "12px",
+                    background: "rgba(255, 255, 255, 0.7)"
+                  }}
+                >
+                  <strong style={{ fontSize: ".85rem" }}>{label}</strong>
+                  <div style={{ display: "flex", gap: "4px" }}>
+                    {["Sì", "No"].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={serviceSelections[field] === value}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onServiceSelectionChange(field, value);
+                        }}
+                        style={{
+                          border: "1px solid #cbd8d1",
+                          borderRadius: "8px",
+                          padding: "5px 8px",
+                          color: serviceSelections[field] === value ? "#fff" : "#385448",
+                          background: serviceSelections[field] === value ? "#27845b" : "#fff",
+                          fontSize: ".8rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>
         <div className="modal-actions">
           {directions && (
             <a className="directions-button" href={directions} target="_blank" rel="noreferrer">
               🚗 Portami qui
-            </a>
-          )}
-          {park.fonte_url && (
-            <a className="secondary-button" href={park.fonte_url} target="_blank" rel="noreferrer">
-              Fonte ufficiale
             </a>
           )}
           <button className="secondary-button" type="button" onClick={onClose}>Chiudi</button>
