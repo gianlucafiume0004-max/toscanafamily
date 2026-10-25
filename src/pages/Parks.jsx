@@ -524,7 +524,7 @@ function normalizeParkText(value) {
     .trim();
 }
 
-function isTargetProvince(provinceValue, cityValue) {
+export function isTargetProvince(provinceValue, cityValue) {
   const normalize = (value) => typeof value === "string"
     ? value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it-IT").replace(/[^a-z0-9]/g, "")
     : "";

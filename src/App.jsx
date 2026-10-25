@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase.js";
 import Activities from "./pages/Activities.jsx";
 import ProviderDetail from "./pages/ProviderDetail.jsx";
-import Parks from "./pages/Parks.jsx";
+import Parks, { isTargetProvince } from "./pages/Parks.jsx";
 import { canonicalProviderCategory } from "./lib/providerCategories.js";
 
 const PARTY_PROVIDER_TYPES = [
@@ -197,7 +197,9 @@ function HomeApp() {
   }), [providers]);
 
   const counts = {
-    parks: parks.length,
+    parks: parks.filter((park) =>
+      park.outside_tuscany !== true && isTargetProvince(park.provincia, park.comune)
+    ).length,
     events: events.length,
     ...providerCounts
   };
