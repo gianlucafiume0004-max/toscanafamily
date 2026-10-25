@@ -104,6 +104,22 @@ article h2 { margin: 0 0 9px; color: var(--green-dark); font-size: 1.2rem; }
 article p { color: #5e6f68; line-height: 1.45; }
 article a { color: #087aa4; font-weight: 800; text-decoration: none; }
 article span { display: inline-block; padding: 7px 11px; border-radius: 999px; color: #176a45; background: #dcf8e9; font-size: .82rem; font-weight: 800; }
+.grid > article.park-card { border-top: 5px solid var(--park-card-accent, #aab9c3); }
+.park-card--playground { --park-card-accent: #71c3dc; }
+.park-card--sports { --park-card-accent: #e8a15b; }
+.park-card--nature { --park-card-accent: #4f8b67; }
+.park-card--park { --park-card-accent: #70ad83; }
+.park-card--other { --park-card-accent: #aab9c3; }
+.park-card .card-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.park-card .card-actions > button,
+.park-card .card-actions > a {
+  display: inline-flex;
+  flex: 1 1 140px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
 
 .message { margin: 16px 0; padding: 17px; border-radius: 18px; text-align: center; background: #eaf5ff; box-shadow: 0 6px 18px rgba(0,0,0,.06); }
 .message.error { color: #9b1c1c; background: #ffe9e9; }

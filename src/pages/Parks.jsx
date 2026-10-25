@@ -24,7 +24,9 @@ export default function Parks({ parks, hasError }) {
   const [selectedPark, setSelectedPark] = useState(null);
 
   const visibleParks = useMemo(
-    () => parks.filter((park) => park.outside_tuscany !== true),
+    () => parks.filter((park) =>
+      park.outside_tuscany !== true && isTargetProvince(park.provincia, park.comune)
+    ),
     [parks]
   );
   const cities = useMemo(
@@ -86,7 +88,13 @@ export default function Parks({ parks, hasError }) {
                 🅿️ {park.parcheggio || "Da verificare"}<br />
                 <div className="popup-actions">
                   <button type="button" onClick={() => setSelectedPark(park)}>Dettagli</button>
-                  <a href={directionsUrl(park)} target="_blank" rel="noreferrer">🚗 Portami qui</a>
+                  <a
+                    href={directionsUrl(park)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    🚗 Portami qui
+                  </a>
                 </div>
               </Popup>
             </Marker>
@@ -121,9 +129,12 @@ export default function Parks({ parks, hasError }) {
 }
 
 function ParkCard({ park, onSelect }) {
+  const visualType = getParkVisualType(park);
+  const directions = cardDirectionsUrl(park);
+
   return (
     <article
-      className="content-card park-card clickable"
+      className={`content-card park-card park-card--${visualType} clickable`}
       role="button"
       tabIndex="0"
       onClick={onSelect}
@@ -134,20 +145,13 @@ function ParkCard({ park, onSelect }) {
         }
       }}
     >
-      <div className="card-icon">🌳</div>
+      <div className="card-icon">{parkVisualIcons[visualType]}</div>
       <div className="card-body">
         <h3>{displayParkName(park)}</h3>
         <p className="location">
           📍 {park.comune || "Comune non disponibile"}{park.provincia ? ` · ${park.provincia}` : ""}
         </p>
         {park.indirizzo && <p className="location">🏠 {park.indirizzo}</p>}
-        <div className="chips">
-          <span>🚻 {park.bagni || "Da verificare"}</span>
-          <span>🅿️ {park.parcheggio || "Da verificare"}</span>
-          <span>⛲ {park.fontanella || "Da verificare"}</span>
-        </div>
-        {park.note && <p className="description">{park.note}</p>}
-        <span className="status">{park.stato || "Da verificare"}</span>
         <div className="card-actions">
           <button
             type="button"
@@ -158,9 +162,9 @@ function ParkCard({ park, onSelect }) {
           >
             Tutte le info
           </button>
-          {hasCoordinates(park) && (
+          {directions && (
             <a
-              href={directionsUrl(park)}
+              href={directions}
               target="_blank"
               rel="noreferrer"
               onClick={(event) => event.stopPropagation()}
@@ -172,6 +176,40 @@ function ParkCard({ park, onSelect }) {
       </div>
     </article>
   );
+}
+
+const parkVisualIcons = {
+  playground: "🛝",
+  sports: "⚽",
+  nature: "🌲",
+  park: "🌳",
+  other: "📍"
+};
+
+function getParkVisualType(park) {
+  const searchableText = [park.nome, park.categoria]
+    .filter((value) => typeof value === "string")
+    .map((value) => value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("it-IT")
+      .trim()
+    )
+    .join(" ");
+
+  if (["area gioco", "area giochi", "parco giochi", "giochi"].some((term) =>
+    searchableText.includes(term)
+  )) return "playground";
+  if (["sport", "sportiva", "campo sportivo", "fitness"].some((term) =>
+    searchableText.includes(term)
+  )) return "sports";
+  if (["area naturale", "bosco", "pineta", "riserva"].some((term) =>
+    searchableText.includes(term)
+  )) return "nature";
+  if (["parco", "giardino", "villa"].some((term) =>
+    searchableText.includes(term)
+  )) return "park";
+  return "other";
 }
 
 function ParkDetails({ park, onClose }) {
@@ -187,9 +225,10 @@ function ParkDetails({ park, onClose }) {
     };
   }, [onClose]);
 
+  const directions = cardDirectionsUrl(park);
   const details = [
     ["📍 Indirizzo", park.indirizzo],
-    ["🏙️ Comune", [park.comune, park.provincia].filter(Boolean).join(" · ")],
+    ["🏙️ Comune", [park.comune, park.provincia].filter(isUsefulDetailValue).join(" · ")],
     ["🚻 Bagni", park.bagni],
     ["🅿️ Parcheggio", park.parcheggio],
     ["⛲ Fontanella", park.fontanella],
@@ -197,12 +236,12 @@ function ParkDetails({ park, onClose }) {
     ["🐕 Area cani", park.area_cani],
     ["♿ Accessibilità", park.accessibilita],
     ["💡 Illuminazione", park.illuminazione],
-    ["🎟️ Ingresso", park.ingresso],
-    ["💶 Costo", park.costo],
-    ["🏷️ Categoria", park.categoria],
+    ["🎟️ Ingresso", getEntranceDescription(park)],
+    ["🏷️ Categoria", isGenericParkCategory(park.categoria) ? "" : park.categoria],
     ["🚭 Fumatori", park.fumatori_stato],
     ["✅ Stato", park.stato]
-  ];
+  ].filter(([, value]) => isUsefulDetailValue(value));
+  const location = [park.comune, park.provincia].filter(isUsefulDetailValue).join(" · ");
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -219,22 +258,23 @@ function ParkDetails({ park, onClose }) {
           <div>
             <small>SCHEDA PARCO</small>
             <h2 id="park-title">{displayParkName(park)}</h2>
-            <p>📍 {park.comune} · {park.provincia}</p>
+            {location && <p>📍 {location}</p>}
           </div>
         </div>
         <div className="details-grid">
           {details.map(([label, value]) => (
             <div className="detail-item" key={label}>
-              <strong>{label}</strong><span>{value || "Da verificare"}</span>
+              <strong>{label}</strong><span>{String(value).trim()}</span>
             </div>
           ))}
         </div>
-        {park.note && (
+        {isUsefulDetailValue(park.note) && (
           <div className="park-notes"><strong>📝 Informazioni</strong><p>{park.note}</p></div>
         )}
+        <p className="park-notes">🌱 Conosci questo parco? Aiutaci ad aggiornare le informazioni</p>
         <div className="modal-actions">
-          {hasCoordinates(park) && (
-            <a className="directions-button" href={directionsUrl(park)} target="_blank" rel="noreferrer">
+          {directions && (
+            <a className="directions-button" href={directions} target="_blank" rel="noreferrer">
               🚗 Portami qui
             </a>
           )}
@@ -252,16 +292,89 @@ function ParkDetails({ park, onClose }) {
 
 function displayParkName(park) {
   const name = typeof park.nome === "string" ? park.nome.trim() : "";
-  const normalizedName = name
+  const normalizedName = normalizeParkText(name).replace(/[^a-z0-9]+/g, " ").trim();
+
+  if (normalizedName !== "area gioco" && normalizedName !== "area giochi") return park.nome;
+
+  const address = isUsefulDetailValue(park.indirizzo) ? String(park.indirizzo).trim() : "";
+  const city = isUsefulDetailValue(park.comune) ? String(park.comune).trim() : "";
+  const location = address || city;
+  if (!location || normalizeParkText(name).includes(normalizeParkText(location))) return "Area giochi";
+  return `Area giochi ${location}`;
+}
+
+function normalizeParkText(value) {
+  return String(value)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("it-IT")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
     .trim();
+}
 
-  if (normalizedName !== "area gioco" && normalizedName !== "area giochi") return park.nome;
-  return "Area giochi";
+function isTargetProvince(provinceValue, cityValue) {
+  const normalize = (value) => typeof value === "string"
+    ? value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it-IT").replace(/[^a-z0-9]/g, "")
+    : "";
+  const province = normalize(provinceValue);
+  if (province) return ["firenze", "fi", "prato", "po", "pistoia", "pt"].includes(province);
+
+  const cityProvince = {
+    campibisenzio: "fi",
+    firenze: "fi",
+    pieveanievole: "pt",
+    prato: "po"
+  };
+  return Boolean(cityProvince[normalize(cityValue)]);
+}
+
+function isUsefulDetailValue(value) {
+  if (value == null || !String(value).trim()) return false;
+  const normalized = normalizeParkText(value);
+  return !["da verificare", "parziale", "n/a", "na", "non disponibile", "-"].includes(normalized);
+}
+
+function isGenericParkCategory(value) {
+  return !isUsefulDetailValue(value) || normalizeParkText(value) === "entrambi";
+}
+
+function getEntranceDescription(park) {
+  const entrance = isUsefulDetailValue(park.ingresso) ? String(park.ingresso).trim() : "";
+  const cost = isUsefulDetailValue(park.costo) ? String(park.costo).trim() : "";
+  const normalizedEntrance = normalizeParkText(entrance);
+  const normalizedCost = normalizeParkText(cost);
+  const costIsUnreliable = !cost ||
+    normalizedCost.includes("da verificare") ||
+    normalizedCost.includes("tariffa non pubblicata") ||
+    normalizedCost.includes("non disponibile") ||
+    normalizedCost === "n/a" ||
+    normalizedCost === "-";
+  const costIsZero = /^(?:€\s*)?0(?:[,.]0+)?(?:\s|$|[;,.])/.test(cost);
+  const isFree = normalizedEntrance.includes("gratuit");
+  const isPaid = normalizedEntrance.includes("pagament");
+
+  if (isFree) {
+    if (/(attrazion|percors|attivit|piscina|gonfiabil|gettoni).{0,50}pagament/.test(normalizedEntrance)) {
+      return entrance;
+    }
+    if (
+      !costIsUnreliable &&
+      !costIsZero &&
+      /(attrazion|percors|attivit|piscina|gonfiabil|gettoni|consumaz)/.test(normalizedCost)
+    ) {
+      return `Ingresso gratuito; ${cost}`;
+    }
+    return "Ingresso gratuito";
+  }
+
+  if (isPaid) {
+    return !costIsUnreliable && !costIsZero
+      ? `Ingresso: ${cost}`
+      : "Ingresso a pagamento";
+  }
+
+  if (!entrance && costIsUnreliable) return "";
+  if (cost && !costIsUnreliable && !costIsZero) return `Ingresso: ${cost}`;
+  return entrance ? `Ingresso: ${entrance}` : "";
 }
 
 function hasCoordinates(park) {
@@ -286,5 +399,28 @@ function hasCoordinates(park) {
 
 function directionsUrl(park) {
   const destination = `${Number(park.latitudine)},${Number(park.longitudine)}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+}
+
+function cardDirectionsUrl(park) {
+  if (hasCoordinates(park)) return directionsUrl(park);
+
+  const isUsablePlace = (value) => {
+    if (typeof value !== "string" || !value.trim()) return false;
+
+    return !["-", "n/a", "non disponibile", "da verificare"]
+      .includes(value.trim().toLocaleLowerCase("it-IT"));
+  };
+
+  const address = isUsablePlace(park.indirizzo) ? park.indirizzo.trim() : "";
+  const city = isUsablePlace(park.comune) ? park.comune.trim() : "";
+  const province = isUsablePlace(park.provincia) ? park.provincia.trim() : "";
+
+  if (!address && !(city && province)) return null;
+
+  const destination = [address, city, province, "Italia"]
+    .filter(Boolean)
+    .join(", ");
+
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 }
