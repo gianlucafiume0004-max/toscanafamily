@@ -234,13 +234,14 @@ async function loadCandidates(supabase, limit, name) {
   for (let offset = 0; ; offset += MAX_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("parks")
-      .select("id, nome, comune, indirizzo, provincia, latitudine, longitudine")
+      .select("id, nome, comune, indirizzo, provincia, latitudine, longitudine, outside_tuscany")
       .order("id", { ascending: true })
       .range(offset, offset + MAX_PAGE_SIZE - 1);
 
     if (error) throw new Error(`Impossibile leggere i parchi da Supabase: ${error.message}`);
 
     for (const park of data ?? []) {
+      if (park.outside_tuscany === true) continue;
       const matchesName = typeof park.nome === "string" &&
         park.nome.trim().toLocaleLowerCase("it-IT") === name;
       if ((name === null ? !isGenericParkName(park.nome) : !matchesName) || !isBlank(park.comune)) continue;
@@ -279,6 +280,17 @@ async function writeParkFields(supabase, park, values) {
   if (error) return `Errore aggiornamento Supabase: ${error.message}`;
   if (!data?.length) return "Record non aggiornato: i campi sono cambiati o non sono scrivibili";
   return "Aggiornato";
+}
+
+async function markParkOutsideTuscany(supabase, park) {
+  const { data, error } = await supabase
+    .from("parks")
+    .update({ outside_tuscany: true })
+    .eq("id", park.id)
+    .select("id");
+  if (error) return `Errore aggiornamento Supabase: ${error.message}`;
+  if (!data?.length) return "Record non aggiornato: record non trovato";
+  return "Marcato fuori Toscana";
 }
 
 async function main() {
@@ -329,12 +341,15 @@ async function main() {
     let writeResult = options.write ? "Non aggiornato" : "Preview";
     if (cached.status === "success") {
       const regione = typeof cached.regione === "string" ? cached.regione.trim() : "";
-      if (normalizeName(regione) !== "toscana") {
-        writeResult = regione ? `Fuori Toscana: ${regione}` : "Regione mancante o non riconosciuta";
-        if (regione) {
-          console.warn(`⛔ FUORI TOSCANA: ${park.nome} → ${regione}`);
+      if (!regione) {
+        writeResult = "Regione mancante o non riconosciuta";
+        console.warn(`⚠ REGIONE NON RICONOSCIUTA: ${park.nome} → (mancante)`);
+      } else if (normalizeName(regione) !== "toscana") {
+        console.warn(`⛔ FUORI TOSCANA: ${park.nome} → ${regione}`);
+        if (options.write) {
+          writeResult = await markParkOutsideTuscany(supabase, park);
         } else {
-          console.warn(`⚠ REGIONE NON RICONOSCIUTA: ${park.nome} → (mancante)`);
+          writeResult = `Fuori Toscana: ${regione}`;
         }
       } else if (options.write) {
         writeResult = await writeParkFields(supabase, park, cached.values);
