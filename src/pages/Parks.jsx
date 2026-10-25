@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
+import { supabase } from "../lib/supabase.js";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
@@ -22,6 +23,8 @@ const parkIcon = L.icon({
 export default function Parks({ parks, hasError }) {
   const [city, setCity] = useState("");
   const [selectedPark, setSelectedPark] = useState(null);
+  const [parkRatings, setParkRatings] = useState({});
+  const [parkRatingStats, setParkRatingStats] = useState({});
 
   const visibleParks = useMemo(
     () => parks.filter((park) =>
@@ -40,6 +43,83 @@ export default function Parks({ parks, hasError }) {
     !city || (typeof park.comune === "string" && park.comune.trim() === city)
   );
   const mappedParks = filteredParks.filter(hasCoordinates);
+
+  async function ratePark(parkId, rating) {
+    setParkRatings((currentRatings) => ({
+      ...currentRatings,
+      [parkId]: rating
+    }));
+
+    try {
+      const { error } = await supabase
+        .from("park_ratings")
+        .insert({ park_id: parkId, rating });
+
+      if (error) {
+        console.error("Errore durante il salvataggio della valutazione del parco:", error);
+        return;
+      }
+
+      setParkRatingStats((currentStats) => {
+        const current = currentStats[parkId] || { sum: 0, count: 0 };
+
+        return {
+          ...currentStats,
+          [parkId]: {
+            sum: current.sum + rating,
+            count: current.count + 1
+          }
+        };
+      });
+    } catch (error) {
+      console.error("Errore durante il salvataggio della valutazione del parco:", error);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadParkRatingStats() {
+      try {
+        const ratings = [];
+        const pageSize = 1000;
+
+        for (let from = 0; ; from += pageSize) {
+          const { data, error } = await supabase
+            .from("park_ratings")
+            .select("park_id, rating")
+            .range(from, from + pageSize - 1);
+
+          if (cancelled) return;
+          if (error) {
+            console.error("Errore durante il caricamento delle valutazioni dei parchi:", error);
+            return;
+          }
+
+          ratings.push(...(data || []));
+          if (!data || data.length < pageSize) break;
+        }
+
+        const nextStats = ratings.reduce((stats, { park_id: parkId, rating }) => {
+          const current = stats[parkId] || { sum: 0, count: 0 };
+          stats[parkId] = {
+            sum: current.sum + rating,
+            count: current.count + 1
+          };
+          return stats;
+        }, {});
+
+        setParkRatingStats(nextStats);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Errore durante il caricamento delle valutazioni dei parchi:", error);
+        }
+      }
+    }
+
+    loadParkRatingStats();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (selectedPark && !visibleParks.some((park) => park.id === selectedPark.id)) {
@@ -83,9 +163,9 @@ export default function Parks({ parks, hasError }) {
             >
               <Popup>
                 <strong>{displayParkName(park)}</strong><br />
-                📍 {park.comune} ({park.provincia})<br />
-                🚻 {park.bagni}<br />
-                🅿️ {park.parcheggio}<br />
+                {park.comune} ({park.provincia})<br />
+                {park.bagni}<br />
+                {park.parcheggio}<br />
                 <div className="popup-actions">
                   <button type="button" onClick={() => setSelectedPark(park)}>Dettagli</button>
                   <a
@@ -93,7 +173,7 @@ export default function Parks({ parks, hasError }) {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    🚗 Portami qui
+                    Portami qui
                   </a>
                 </div>
               </Popup>
@@ -110,7 +190,14 @@ export default function Parks({ parks, hasError }) {
       <div className="results-list">
         <div className="grid">
           {filteredParks.map((park) => (
-            <ParkCard key={park.id} park={park} onSelect={() => setSelectedPark(park)} />
+            <ParkCard
+              key={park.id}
+              park={park}
+              rating={parkRatings[park.id] || 0}
+              ratingStats={parkRatingStats[park.id]}
+              onRate={(rating) => ratePark(park.id, rating)}
+              onSelect={() => setSelectedPark(park)}
+            />
           ))}
         </div>
       </div>
@@ -128,7 +215,7 @@ export default function Parks({ parks, hasError }) {
   );
 }
 
-function ParkCard({ park, onSelect }) {
+function ParkCard({ park, rating, ratingStats, onRate, onSelect }) {
   const visualType = getParkVisualType(park);
   const directions = cardDirectionsUrl(park);
 
@@ -148,6 +235,45 @@ function ParkCard({ park, onSelect }) {
       <div className="card-icon">{parkVisualIcons[visualType]}</div>
       <div className="card-body">
         <h3>{displayParkName(park)}</h3>
+        <div className="park-rating" role="group" aria-label={`Valutazione di ${displayParkName(park)}`}>
+          {Array.from({ length: 5 }, (_, index) => {
+            const value = index + 1;
+            const isSelected = value <= rating;
+
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-label={`${value} ${value === 1 ? "stella" : "stelle"} su 5`}
+                aria-pressed={isSelected}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRate(value);
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                style={{
+                  background: "none",
+                  border: 0,
+                  padding: "0 2px",
+                  color: isSelected ? "#f5a623" : "#aab3af",
+                  cursor: "pointer",
+                  fontSize: "1.5rem",
+                  lineHeight: 1
+                }}
+              >
+                {isSelected ? "★" : "☆"}
+              </button>
+            );
+          })}
+        </div>
+        <p className="location">
+          {ratingStats?.count
+            ? `⭐ ${(ratingStats.sum / ratingStats.count).toLocaleString("it-IT", {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1
+              })} · ${ratingStats.count} ${ratingStats.count === 1 ? "valutazione" : "valutazioni"}`
+            : "Nessuna valutazione"}
+        </p>
         <p className="location">
           📍 {park.comune || "Comune non disponibile"}{park.provincia ? ` · ${park.provincia}` : ""}
         </p>
@@ -271,7 +397,11 @@ function ParkDetails({ park, onClose }) {
         {isUsefulDetailValue(park.note) && (
           <div className="park-notes"><strong>📝 Informazioni</strong><p>{park.note}</p></div>
         )}
-        <p className="park-notes">🌱 Conosci questo parco? Aiutaci ad aggiornare le informazioni</p>
+        <div className="park-notes">
+          <p>🌱 Conosci questo parco? Aiutaci ad aggiornarlo!</p>
+          <p>Sei stato qui con la tua famiglia? Condividi quello che sai. Segnalaci la presenza di bagni, parcheggio, fontanella, area picnic, area cani, accessibilità e altri servizi.</p>
+          <p>Il tuo contributo può essere utile ad altre famiglie. 💚</p>
+        </div>
         <div className="modal-actions">
           {directions && (
             <a className="directions-button" href={directions} target="_blank" rel="noreferrer">
