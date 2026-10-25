@@ -23,23 +23,27 @@ export default function Parks({ parks, hasError }) {
   const [city, setCity] = useState("");
   const [selectedPark, setSelectedPark] = useState(null);
 
+  const visibleParks = useMemo(
+    () => parks.filter((park) => park.outside_tuscany !== true),
+    [parks]
+  );
   const cities = useMemo(
-    () => [...new Set(parks
+    () => [...new Set(visibleParks
       .map((park) => typeof park.comune === "string" ? park.comune.trim() : "")
       .filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, "it")),
-    [parks]
+    [visibleParks]
   );
-  const filteredParks = parks.filter((park) =>
+  const filteredParks = visibleParks.filter((park) =>
     !city || (typeof park.comune === "string" && park.comune.trim() === city)
   );
   const mappedParks = filteredParks.filter(hasCoordinates);
 
   useEffect(() => {
-    if (selectedPark && !parks.some((park) => park.id === selectedPark.id)) {
+    if (selectedPark && !visibleParks.some((park) => park.id === selectedPark.id)) {
       setSelectedPark(null);
     }
-  }, [parks, selectedPark]);
+  }, [visibleParks, selectedPark]);
 
   return (
     <>
@@ -88,7 +92,7 @@ export default function Parks({ parks, hasError }) {
             </Marker>
           ))}
         </MapContainer>
-        {mappedParks.length === 0 && parks.length > 0 && (
+        {mappedParks.length === 0 && visibleParks.length > 0 && (
           <div className="message warning">
             I parchi sono presenti, ma non hanno ancora coordinate disponibili.
           </div>
@@ -133,7 +137,10 @@ function ParkCard({ park, onSelect }) {
       <div className="card-icon">🌳</div>
       <div className="card-body">
         <h3>{displayParkName(park)}</h3>
-        <p className="location">📍 {park.comune} · {park.provincia}</p>
+        <p className="location">
+          📍 {park.comune || "Comune non disponibile"}{park.provincia ? ` · ${park.provincia}` : ""}
+        </p>
+        {park.indirizzo && <p className="location">🏠 {park.indirizzo}</p>}
         <div className="chips">
           <span>🚻 {park.bagni || "Da verificare"}</span>
           <span>🅿️ {park.parcheggio || "Da verificare"}</span>
@@ -254,20 +261,7 @@ function displayParkName(park) {
     .trim();
 
   if (normalizedName !== "area gioco" && normalizedName !== "area giochi") return park.nome;
-
-  const address = typeof park.indirizzo === "string" ? park.indirizzo.trim() : "";
-  const city = typeof park.comune === "string" ? park.comune.trim() : "";
-  const location = [address, city].find((value) =>
-    value && !["-", "n/a", "non disponibile", "da verificare"].includes(value.toLocaleLowerCase("it-IT"))
-  );
-  if (location) return `Area giochi · ${location}`;
-
-  const latitude = Number(park.latitudine);
-  const longitude = Number(park.longitudine);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    return `Area giochi · ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-  }
-  return "Area giochi · località non disponibile";
+  return "Area giochi";
 }
 
 function hasCoordinates(park) {
