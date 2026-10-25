@@ -84,8 +84,8 @@ export default function Parks({ parks, hasError }) {
               <Popup>
                 <strong>{displayParkName(park)}</strong><br />
                 📍 {park.comune} ({park.provincia})<br />
-                🚻 {park.bagni || "Da verificare"}<br />
-                🅿️ {park.parcheggio || "Da verificare"}<br />
+                🚻 {park.bagni}<br />
+                🅿️ {park.parcheggio}<br />
                 <div className="popup-actions">
                   <button type="button" onClick={() => setSelectedPark(park)}>Dettagli</button>
                   <a
