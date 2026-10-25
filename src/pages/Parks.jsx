@@ -391,9 +391,7 @@ function ParkDetails({ park, serviceSelections, onServiceSelectionChange, onClos
     ["✅ Stato", park.stato]
   ].filter(([, value]) => isUsefulDetailValue(value));
   const location = [park.comune, park.provincia].filter(isUsefulDetailValue).join(" · ");
-  const parkNotes = typeof park.note === "string"
-    ? park.note.split(/\r?\n/).filter((line) => !/^\s*Fonte\s*:/i.test(line)).join("\n").trim()
-    : "";
+  const parkNotes = getVisibleParkNotes(park.note);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -505,6 +503,17 @@ function displayParkName(park) {
   const location = address || city;
   if (!location || normalizeParkText(name).includes(normalizeParkText(location))) return "Area giochi";
   return `Area giochi ${location}`;
+}
+
+function getVisibleParkNotes(note) {
+  if (typeof note !== "string") return "";
+
+  return note
+    .replace(/\bFont(?:e|i):[\s\S]*$/i, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\r?\n[ \t]*/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
 }
 
 function normalizeParkText(value) {
