@@ -273,5 +273,125 @@
     "displayName": "Via Camporcioni Est, Casabianca, Ponte Buggianese, Pistoia, Toscana, 51019, Italia",
     "error": null,
     "cachedAt": "2026-10-24T11:03:28.986Z"
+  },
+  "43.5536896,11.3846695": {
+    "status": "success",
+    "values": {
+      "comune": "Greve in Chianti",
+      "indirizzo": "Strada Monte San Michele",
+      "provincia": "Firenze"
+    },
+    "regione": "Toscana",
+    "displayName": "Strada Monte San Michele, Torsoli, Lucolena in Chianti, Greve in Chianti, Firenze, Toscana, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:43:45.358Z"
+  },
+  "43.7683481,11.0956710": {
+    "status": "success",
+    "values": {
+      "comune": "Lastra a Signa",
+      "indirizzo": "Via Giacomo Puccini",
+      "provincia": "Firenze"
+    },
+    "regione": "Toscana",
+    "displayName": "Via Giacomo Puccini, San Martino a Gangalandi, Ponte a Signa, Lastra a Signa, Firenze, Toscana, 50055, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:43:46.721Z"
+  },
+  "43.8411219,11.2002244": {
+    "status": "success",
+    "values": {
+      "comune": "Sesto Fiorentino",
+      "indirizzo": "Via del Cuoco",
+      "provincia": "Firenze"
+    },
+    "regione": "Toscana",
+    "displayName": "Via del Cuoco, Borgo Tantola, Querceto, Sesto Fiorentino, Firenze, Toscana, 50019, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:43:47.999Z"
+  },
+  "43.8610793,10.7679235": {
+    "status": "success",
+    "values": {
+      "comune": "Montecatini Terme",
+      "indirizzo": "McDrive",
+      "provincia": "Pistoia"
+    },
+    "regione": "Toscana",
+    "displayName": "McDrive, Gallo, Montecatini Terme, Pistoia, Toscana, 51061, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:43:48.488Z"
+  },
+  "43.7912860,11.0628448": {
+    "status": "success",
+    "values": {
+      "comune": "Carmignano",
+      "indirizzo": "Via Giacomo Leopardi",
+      "provincia": "Prato"
+    },
+    "regione": "Toscana",
+    "displayName": "Via Giacomo Leopardi, Comeana, Carmignano, Prato, Toscana, 59016, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:43:49.968Z"
+  },
+  "43.8448264,11.0877629": {
+    "status": "success",
+    "values": {
+      "comune": "Prato",
+      "indirizzo": "Via Giulio Pastore",
+      "provincia": "Prato"
+    },
+    "regione": "Toscana",
+    "displayName": "Via Giulio Pastore, Paperino, San Giorgio a Colonica, Prato, Toscana, 59100, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:47:45.288Z"
+  },
+  "44.1691003,11.2157768": {
+    "status": "success",
+    "values": {
+      "comune": "Pian Del Voglio",
+      "indirizzo": "Via Antica",
+      "provincia": "Bologna"
+    },
+    "regione": "Emilia-Romagna",
+    "displayName": "Via Antica, Saletto, Canova, Pian Del Voglio, San Benedetto Val di Sambro, Unione dell'Appennino Bolognese, Bologna, Emilia-Romagna, 40048, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:47:46.137Z"
+  },
+  "44.1299214,11.0583208": {
+    "status": "success",
+    "values": {
+      "comune": "Bargi",
+      "indirizzo": "SP40",
+      "provincia": "Bologna"
+    },
+    "regione": "Emilia-Romagna",
+    "displayName": "SP40, Ca' de Fanti, La Piana, Bargi, Camugnano, Unione dell'Alto Reno, Bologna, Emilia-Romagna, 40032, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:47:47.689Z"
+  },
+  "44.0758776,10.8900526": {
+    "status": "success",
+    "values": {
+      "comune": "Pistoia",
+      "indirizzo": "Via Case Sandrella",
+      "provincia": "Pistoia"
+    },
+    "regione": "Toscana",
+    "displayName": "Via Case Sandrella, Casino, Orsigna, Pistoia, Toscana, 51100, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:47:48.336Z"
+  },
+  "43.8870648,10.7533898": {
+    "status": "success",
+    "values": {
+      "comune": "Margine Coperta",
+      "indirizzo": "Via Gaetano Donizetti",
+      "provincia": "Pistoia"
+    },
+    "regione": "Toscana",
+    "displayName": "Via Gaetano Donizetti, Margine Coperta, Massa e Cozzile, Pistoia, Toscana, 51010, Italia",
+    "error": null,
+    "cachedAt": "2026-10-25T09:47:49.574Z"
   }
 }

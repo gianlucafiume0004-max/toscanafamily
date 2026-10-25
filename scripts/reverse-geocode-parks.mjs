@@ -21,8 +21,9 @@ const USER_AGENT = USER_AGENT_CONTACT
   : "ToscanaFamily-ReverseGeocoder/1.0";
 
 function parseArguments(args) {
-  const options = { write: false, limit: Infinity };
+  const options = { write: false, limit: Infinity, name: null };
   let limitProvided = false;
+  let nameProvided = false;
 
   for (const arg of args) {
     if (arg === "--write") {
@@ -40,6 +41,15 @@ function parseArguments(args) {
       }
       options.limit = limit;
       limitProvided = true;
+      continue;
+    }
+
+    if (arg.startsWith("--name=")) {
+      if (nameProvided) throw new Error("L'opzione --name può essere specificata una sola volta.");
+      const value = arg.slice("--name=".length).trim();
+      if (!value) throw new Error("Il nome del parco non può essere vuoto.");
+      options.name = value.toLocaleLowerCase("it-IT");
+      nameProvided = true;
       continue;
     }
 
@@ -100,13 +110,14 @@ function mapAddress(result) {
   const houseNumber = firstNonBlank(address.house_number);
   const indirizzo = [street, houseNumber].filter(Boolean).join(" ");
   const provincia = firstNonBlank(address.county, address.state_district);
+  const regione = firstNonBlank(address.state);
   const values = { comune, indirizzo, provincia };
 
   if (!Object.values(values).some(Boolean)) {
     return { error: "La risposta non contiene Comune, via o provincia utilizzabili." };
   }
 
-  return { values };
+  return { values, regione };
 }
 
 function getRetryAfterMs(response) {
@@ -191,6 +202,7 @@ async function requestReverseGeocode(latitude, longitude) {
     if (mapped.error) return mapped;
     return {
       values: mapped.values,
+      regione: mapped.regione,
       displayName: typeof result.display_name === "string" ? result.display_name : ""
     };
   }
@@ -216,7 +228,7 @@ async function saveCache(cache) {
   await writeFile(CACHE_FILE, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
 }
 
-async function loadCandidates(supabase, limit) {
+async function loadCandidates(supabase, limit, name) {
   const candidates = [];
 
   for (let offset = 0; ; offset += MAX_PAGE_SIZE) {
@@ -229,7 +241,9 @@ async function loadCandidates(supabase, limit) {
     if (error) throw new Error(`Impossibile leggere i parchi da Supabase: ${error.message}`);
 
     for (const park of data ?? []) {
-      if (!isGenericParkName(park.nome) || !isBlank(park.comune)) continue;
+      const matchesName = typeof park.nome === "string" &&
+        park.nome.trim().toLocaleLowerCase("it-IT") === name;
+      if ((name === null ? !isGenericParkName(park.nome) : !matchesName) || !isBlank(park.comune)) continue;
       const latitude = parseCoordinate(park.latitudine, -90, 90);
       const longitude = parseCoordinate(park.longitudine, -180, 180);
       if (latitude === null || longitude === null) continue;
@@ -286,7 +300,7 @@ async function main() {
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
-  const candidates = await loadCandidates(supabase, options.limit);
+  const candidates = await loadCandidates(supabase, options.limit, options.name);
   const cache = await loadCache();
   const results = [];
 
@@ -304,6 +318,7 @@ async function main() {
       cached = {
         status: response.error ? "failed" : "success",
         values: response.values ?? null,
+        regione: response.regione ?? "",
         displayName: response.displayName ?? "",
         error: response.error ?? null,
         cachedAt: new Date().toISOString()
@@ -312,8 +327,18 @@ async function main() {
     }
 
     let writeResult = options.write ? "Non aggiornato" : "Preview";
-    if (cached.status === "success" && options.write) {
-      writeResult = await writeParkFields(supabase, park, cached.values);
+    if (cached.status === "success") {
+      const regione = typeof cached.regione === "string" ? cached.regione.trim() : "";
+      if (normalizeName(regione) !== "toscana") {
+        writeResult = regione ? `Fuori Toscana: ${regione}` : "Regione mancante o non riconosciuta";
+        if (regione) {
+          console.warn(`⛔ FUORI TOSCANA: ${park.nome} → ${regione}`);
+        } else {
+          console.warn(`⚠ REGIONE NON RICONOSCIUTA: ${park.nome} → (mancante)`);
+        }
+      } else if (options.write) {
+        writeResult = await writeParkFields(supabase, park, cached.values);
+      }
     }
 
     const values = cached.values ?? {};
