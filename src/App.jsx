@@ -166,31 +166,40 @@ const SEASONAL_EVENT_CHIPS = [
     value: "Natale",
     label: "🎄 Natale",
     className: "christmas",
-    terms: ["natale", "natalizio", "natalizia", "babbo natale", "mercatino di natale", "mercatini di natale", "albero di natale", "villaggio di natale", "presepe", "presepi", "avvento"]
+    terms: ["natale", "natalizio", "natalizia", "babbo natale", "elfo", "elfi", "elfo di natale", "mercatino di natale", "mercatini di natale", "albero di natale", "villaggio di natale", "presepe", "presepi", "avvento"]
   },
   {
     value: "Befana",
     label: "🧹 Befana",
     className: "epiphany",
-    terms: ["befana", "epifania", "calza", "calze", "re magi"]
+    terms: [
+      "befana",
+      "epifania",
+      "calza",
+      "calza della befana",
+      "arriva la befana",
+      "dolci della befana",
+      "notte della befana",
+      "festa della befana"
+    ]
   },
   {
     value: "Carnevale",
     label: "🎭 Carnevale",
     className: "carnival",
-    terms: ["carnevale", "carnevalesco", "carnevalesca", "maschera", "maschere", "mascherina", "sfilata", "coriandoli", "martedi grasso", "giovedi grasso"]
+    terms: ["carnevale", "carnevalesco", "carnevalesca", "mascherato", "mascherata", "maschera", "maschere", "mascherina", "sfilata mascherata", "coriandoli", "martedi grasso", "giovedi grasso"]
   },
   {
     value: "Festa del papà",
     label: "👔 Festa del papà",
     className: "fathers-day",
-    terms: ["festa del papa", "festa dei papa", "papa", "babbo", "san giuseppe"]
+    terms: ["festa del papa", "festa dei papa", "19 marzo", "san giuseppe"]
   },
   {
     value: "Pasqua",
     label: "🐣 Pasqua",
     className: "easter",
-    terms: ["pasqua", "pasquale", "uovo", "uova", "coniglio", "coniglietto", "caccia alle uova"]
+    terms: ["pasqua", "pasquale", "uovo di pasqua", "uova di pasqua", "caccia alle uova", "coniglio pasquale", "coniglietto pasquale", "caccia all uovo"]
   },
   {
     value: "Festa della mamma",
@@ -202,25 +211,62 @@ const SEASONAL_EVENT_CHIPS = [
     value: "Festa dei nonni",
     label: "👵 Festa dei nonni",
     className: "grandparents-day",
-    terms: ["festa dei nonni", "nonni", "nonno", "nonna"]
+    terms: ["festa dei nonni", "giornata dei nonni", "festa dei nonni e degli anziani"]
+  },
+  {
+    value: "Ritorno a scuola",
+    label: "🎒 Ritorno a scuola",
+    className: "back-to-school",
+    terms: [
+      "ritorno a scuola",
+      "back to school",
+      "inizio della scuola",
+      "primo giorno di scuola",
+      "materiale scolastico",
+      "forniture scolastiche",
+      "corredo scolastico",
+      "zaino scolastico",
+      "diario scolastico"
+    ]
   },
   {
     value: "Halloween",
     label: "🎃 Halloween",
     className: "halloween",
-    terms: ["halloween", "zucca", "zucche", "mostro", "mostri", "strega", "streghe", "fantasma", "fantasmi", "dolcetto o scherzetto"]
+    terms: [
+      "halloween",
+      "zucca",
+      "zucche",
+      "mostro",
+      "mostri",
+      "strega",
+      "streghe",
+      "fantasma",
+      "fantasmi",
+      "dolcetto o scherzetto",
+      "trick or treat",
+      "da paura"
+    ]
+  },
+  {
+    value: "Capodanno",
+    label: "🎆 Capodanno",
+    className: "new-year",
+    terms: ["capodanno", "anno nuovo", "san silvestro", "notte di san silvestro", "veglione di fine anno", "festa di fine anno"]
   }
 ];
 
-const SEASONAL_EVENT_CHIP_PRIORITY = [
+const SEASONAL_EVENT_CHIP_ORDER = [
   "Halloween",
   "Natale",
+  "Capodanno",
   "Befana",
   "Carnevale",
-  "Festa del papà",
   "Pasqua",
+  "Festa del papà",
   "Festa della mamma",
-  "Festa dei nonni"
+  "Festa dei nonni",
+  "Ritorno a scuola"
 ];
 
 const EVENT_IDEA_CHIP_PRIORITY = [
@@ -253,12 +299,6 @@ function addLocalDays(date, days) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
-function secondSundayOfMay(year) {
-  const firstOfMay = new Date(year, 4, 1);
-  const daysUntilSunday = (7 - firstOfMay.getDay()) % 7;
-  return new Date(year, 4, 1 + daysUntilSunday + 7);
-}
-
 function easterSunday(year) {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -274,35 +314,72 @@ function easterSunday(year) {
   const m = Math.floor((a + 11 * h + 22 * l) / 451);
   const month = Math.floor((h + l - 7 * m + 114) / 31);
   const day = ((h + l - 7 * m + 114) % 31) + 1;
-
   return new Date(year, month - 1, day);
 }
 
-function seasonalKeywordIsVisible(keyword, today) {
+function seasonalChipVisibility(value, today) {
   const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const year = day.getFullYear();
+  const holidayWindowForYear = (holiday, holidayYear) => {
+    const fixedWindow = (startMonth, startDay, endMonth, endDay) => {
+      const start = new Date(holidayYear, startMonth, startDay);
+      const endYear = endMonth < startMonth ? holidayYear + 1 : holidayYear;
+      return {
+        start,
+        end: new Date(endYear, endMonth, endDay)
+      };
+    };
 
-  const recurrenceForYear = (recurrenceYear) => {
-    if (keyword === "Natale") return new Date(recurrenceYear, 11, 25);
-    if (keyword === "Befana") return new Date(recurrenceYear, 0, 6);
-    if (keyword === "Carnevale") return addLocalDays(easterSunday(recurrenceYear), -47);
-    if (keyword === "Festa del papà") return new Date(recurrenceYear, 2, 19);
-    if (keyword === "Pasqua") return easterSunday(recurrenceYear);
-    if (keyword === "Festa della mamma") return secondSundayOfMay(recurrenceYear);
-    if (keyword === "Festa dei nonni") return new Date(recurrenceYear, 9, 2);
-    if (keyword === "Halloween") return new Date(recurrenceYear, 9, 31);
+    if (holiday === "Halloween") {
+      return { ...fixedWindow(9, 1, 10, 7), recurrence: new Date(holidayYear, 9, 31) };
+    }
+    if (holiday === "Natale") {
+      return { ...fixedWindow(10, 25, 0, 6), recurrence: new Date(holidayYear, 11, 25) };
+    }
+    if (holiday === "Capodanno") {
+      return { ...fixedWindow(11, 1, 0, 10), recurrence: new Date(holidayYear + 1, 0, 1) };
+    }
+    if (holiday === "Carnevale") {
+      const recurrence = addLocalDays(easterSunday(holidayYear), -47);
+      return { start: addLocalDays(recurrence, -30), end: recurrence, recurrence };
+    }
+    if (holiday === "Pasqua") {
+      const recurrence = easterSunday(holidayYear);
+      return { start: addLocalDays(recurrence, -30), end: addLocalDays(recurrence, 15), recurrence };
+    }
+    if (holiday === "Festa del papà") {
+      return { ...fixedWindow(1, 19, 2, 19), recurrence: new Date(holidayYear, 2, 19) };
+    }
+    if (holiday === "Festa della mamma") {
+      const firstOfMay = new Date(holidayYear, 4, 1);
+      const secondSunday = new Date(
+        holidayYear,
+        4,
+        1 + ((7 - firstOfMay.getDay()) % 7) + 7
+      );
+      return { start: addLocalDays(secondSunday, -30), end: secondSunday, recurrence: secondSunday };
+    }
+    if (holiday === "Festa dei nonni") {
+      return { ...fixedWindow(8, 1, 9, 5), recurrence: new Date(holidayYear, 9, 2) };
+    }
+    if (holiday === "Ritorno a scuola") {
+      return { ...fixedWindow(7, 15, 8, 30), recurrence: new Date(holidayYear, 8, 1) };
+    }
+    if (holiday === "Befana") {
+      return { ...fixedWindow(11, 1, 0, 10), recurrence: new Date(holidayYear + 1, 0, 6) };
+    }
     return null;
   };
 
-  return [year - 1, year, year + 1].some((recurrenceYear) => {
-    const recurrence = recurrenceForYear(recurrenceYear);
-    if (!recurrence) return false;
-    const start = addLocalDays(recurrence, -45);
-    const end = keyword === "Natale"
-      ? new Date(recurrenceYear + 1, 0, 11)
-      : addLocalDays(recurrence, 5);
-    return day >= start && day <= end;
-  });
+  const activeWindows = [year - 1, year, year + 1]
+    .map((holidayYear) => holidayWindowForYear(value, holidayYear))
+    .filter(Boolean);
+  const activeWindow = activeWindows.find(({ start, end }) => day >= start && day <= end);
+  if (activeWindow) {
+    return { priority: 1, windowEnd: activeWindow.end, recurrence: activeWindow.recurrence };
+  }
+
+  return null;
 }
 
 function eventSearchText(event) {
@@ -486,19 +563,29 @@ function eventCostInfo(event) {
 }
 
 function eventReservationStatus(event) {
-  const text = eventText(event);
-  if (/prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*/i.test(text)) {
+  const text = [eventText(event), event.booking_notes]
+    .filter(isUsableEventText)
+    .join(" ");
+  if (event.booking_required === true ||
+    /prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|prenotare\s+(?:è\s+)?obbligator\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*/i.test(text)) {
     return "Obbligatoria";
   }
-  if (/prenotazion\w*\s+consigliat\w*|su\s+prenotazion\w*|consigliat\w*.{0,30}prenotazion\w*/i.test(text)) {
+  if (event.booking_required === false &&
+    !/prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*/i.test(text)) {
+    return "Non richiesta";
+  }
+  if (/prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|senza\s+prenotazion\w*/i.test(text)) {
+    return "Non richiesta";
+  }
+  if (/prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*/i.test(text)) {
     return "Consigliata";
   }
-  return "Non richiesta";
+  return "";
 }
 
 function eventReservationText(event) {
   const status = eventReservationStatus(event);
-  return status === "Non richiesta" ? "" : `Prenotazione ${status.toLowerCase()}`;
+  return status ? `Prenotazione ${status.toLowerCase()}` : "";
 }
 
 function EventCostBadge({ event }) {
@@ -515,11 +602,7 @@ function EventCostBadge({ event }) {
       )}
       {reservationText && (
         <div className="event-cost-badge event-cost--reservation">
-          <strong>
-            {reservationText === "Prenotazione obbligatoria"
-              ? "🟡 Prenotazione obbligatoria"
-              : "🟡 Prenotazione consigliata"}
-          </strong>
+          <strong>🟡 {reservationText}</strong>
         </div>
       )}
     </div>
@@ -539,6 +622,28 @@ function matchesQuickKeyword(searchableText, keyword) {
   }));
 }
 
+function matchesSeasonalEvent(event, chip) {
+  const normalize = (value) => normalizeEventText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const flatten = (value) => {
+    if (typeof value === "string") return [value];
+    if (Array.isArray(value)) return value.flatMap(flatten);
+    if (value && typeof value === "object") {
+      return ["name", "label", "category", "title"].flatMap((key) => flatten(value[key]));
+    }
+    return [];
+  };
+  const mainDescription = String(event.description || "")
+    .split(/condividi su:|eventi e notizie/i)[0];
+  const searchableText = normalize([
+    ...flatten([event.title, event.category, event.categories, event.tags]),
+    mainDescription
+  ].join(" "));
+  const paddedText = ` ${searchableText} `;
+  return chip.terms.some((term) => paddedText.includes(` ${normalize(term)} `));
+}
+
 function eventChipId(type, value) {
   const identifier = normalizeEventText(value)
     .replace(/[^a-z0-9]+/g, "_")
@@ -546,18 +651,8 @@ function eventChipId(type, value) {
   return `${type}:${identifier}`;
 }
 
-function getPrimaryEventChip(event, visibleSeasonalChips) {
+function getPrimaryIdeaChip(event) {
   const searchableText = eventSearchText(event);
-  const visibleSeasonalValues = new Set(visibleSeasonalChips.map((chip) =>
-    typeof chip === "string" ? chip : chip.value
-  ));
-
-  for (const value of SEASONAL_EVENT_CHIP_PRIORITY) {
-    if (visibleSeasonalValues.has(value) && matchesQuickKeyword(searchableText, value)) {
-      return eventChipId("seasonal", value);
-    }
-  }
-
   for (const value of EVENT_IDEA_CHIP_PRIORITY) {
     if (matchesQuickKeyword(searchableText, value)) {
       return eventChipId("idea", value);
@@ -835,13 +930,10 @@ function HomeApp() {
     if (!matchesAgeRange(item.age_range, eventAge)) return false;
     return true;
   });
-  const visibleSeasonalChips = SEASONAL_EVENT_CHIPS.filter(({ value }) =>
-    seasonalKeywordIsVisible(value, today)
-  );
   const primaryChipByEvent = new Map();
   const primaryChipCounts = new Map();
   filteredWithoutQuickChip.forEach((item) => {
-    const primaryChip = getPrimaryEventChip(item, visibleSeasonalChips);
+    const primaryChip = getPrimaryIdeaChip(item);
     primaryChipByEvent.set(item, primaryChip);
     primaryChipCounts.set(primaryChip, (primaryChipCounts.get(primaryChip) ?? 0) + 1);
   });
@@ -858,32 +950,53 @@ function HomeApp() {
       count: primaryChipCounts.get(chip.id ?? eventChipId("idea", chip.value)) ?? 0
     }))
     .filter((chip) => chip.count > 0);
-  const seasonalEventChipCounts = SEASONAL_EVENT_CHIP_PRIORITY
-    .map((value) => visibleSeasonalChips.find((chip) => chip.value === value))
-    .filter(Boolean)
-    .map((chip) => ({
-      ...chip,
-      id: eventChipId("seasonal", chip.value),
-      count: primaryChipCounts.get(eventChipId("seasonal", chip.value)) ?? 0
-    }))
-    .filter((chip) => chip.count > 0);
+  const seasonalEventChipCounts = SEASONAL_EVENT_CHIP_ORDER
+    .map((value) => SEASONAL_EVENT_CHIPS.find((chip) => chip.value === value))
+    .map((chip) => {
+      const matchingEvents = filteredWithoutQuickChip.filter((item) =>
+        matchesSeasonalEvent(item, chip)
+      );
+      return {
+        ...chip,
+        id: eventChipId("seasonal", chip.value),
+        visibility: seasonalChipVisibility(chip.value, today),
+        count: matchingEvents.length
+      };
+    })
+    .filter((chip) => chip.visibility)
+    .sort((a, b) => {
+      if (a.visibility.priority !== b.visibility.priority) {
+        return a.visibility.priority - b.visibility.priority;
+      }
+      if (a.visibility.recurrence && b.visibility.recurrence) {
+        return Math.abs(a.visibility.recurrence - today) -
+          Math.abs(b.visibility.recurrence - today);
+      }
+      return b.count - a.count;
+    })
+    .map(({ visibility, ...chip }) => chip);
   const availableQuickChips = [...ideaChipCounts, ...seasonalEventChipCounts];
-  const selectedQuickChipCount = availableQuickChips
-    .find((chip) => chip.id === eventQuickKeyword)?.count ?? 0;
+  const selectedSeasonalChip = eventQuickKeyword.startsWith("seasonal:")
+    ? SEASONAL_EVENT_CHIPS.find((chip) =>
+      eventChipId("seasonal", chip.value) === eventQuickKeyword
+    )
+    : null;
   const filtered = active === "events" && eventQuickKeyword
     ? filteredWithoutQuickChip.filter((item) =>
-      primaryChipByEvent.get(item) === eventQuickKeyword
+      selectedSeasonalChip
+        ? matchesSeasonalEvent(item, selectedSeasonalChip)
+        : primaryChipByEvent.get(item) === eventQuickKeyword
     )
     : filteredWithoutQuickChip;
 
   useEffect(() => {
-    if (eventQuickKeyword && selectedQuickChipCount === 0) {
+    if (eventQuickKeyword && !availableQuickChips.some((chip) => chip.id === eventQuickKeyword)) {
       setEventQuickKeyword("");
       if (eventQuickKeyword.startsWith("idea:")) {
         setIdeaPanelOpen(false);
       }
     }
-  }, [eventQuickKeyword, selectedQuickChipCount]);
+  }, [eventQuickKeyword, availableQuickChips]);
 
   const hasEventFilters = Boolean(
     city || eventAge || eventWhen !== "all" || eventQuickKeyword
@@ -1228,7 +1341,11 @@ function EventDetails({ event, onClose }) {
   const endTime = formatEventTime(event.ends_on);
   const time = [...new Set([startTime, endTime].filter(Boolean))].join(" – ");
   const location = [event.location, event.city].filter(isUsableEventText).join(" · ");
-  const address = isUsableEventText(event.address) ? event.address.trim() : "";
+  const address = isUsableEventText(event.street_address)
+    ? event.street_address.trim()
+    : isUsableEventText(event.address)
+      ? event.address.split(",")[0].trim()
+      : "";
   const streetNumber = [
     event.street_number,
     event.civic_number,
@@ -1243,14 +1360,15 @@ function EventDetails({ event, onClose }) {
   const officialUrl = getHttpUrl(event.official_url) || getHttpUrl(event.source_url);
   const organizer = isUsableEventText(event.organizer) ? event.organizer.trim() : "";
   const actionItems = eventActionItems(event);
-  const addressStreet = address.split(",")[0].trim();
-  const normalizedAddressStreet = streetNumber && !new RegExp(`(?:^|\\s)${streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(addressStreet)
-    ? `${addressStreet} ${streetNumber}`
-    : addressStreet;
+  const addressStreet = streetNumber
+    ? address.replace(new RegExp(`(?:\\s|,)${streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "").trim()
+    : address;
   const addressLines = [
-    normalizedAddressStreet,
-    isUsableEventText(event.postal_code) ? event.postal_code.trim() : "",
-    isUsableEventText(event.city) ? event.city.trim() : ""
+    addressStreet,
+    streetNumber ? `Numero civico: ${streetNumber}` : "",
+    isUsableEventText(event.postal_code) ? `CAP: ${event.postal_code.trim()}` : "",
+    isUsableEventText(event.city) ? `Comune: ${event.city.trim()}` : "",
+    isUsableEventText(event.province) ? `Provincia: ${event.province.trim()}` : ""
   ].filter(Boolean);
   const highlightedActions = [
     directions && {
@@ -1293,7 +1411,7 @@ function EventDetails({ event, onClose }) {
       label: "💰 Costo",
       value: <EventCostBadge event={event} />
     },
-    {
+    reservationStatus && {
       label: "🎟️ Prenotazione",
       value: reservationStatus
     },

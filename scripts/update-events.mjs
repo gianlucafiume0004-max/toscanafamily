@@ -55,6 +55,7 @@ function absoluteUrl(value, baseUrl) {
 }
 
 function absoluteHttpUrl(value, baseUrl) {
+  if (typeof value !== "string" || !value.trim()) return null;
   const url = absoluteUrl(value, baseUrl);
   if (!url) return null;
   try {
@@ -137,6 +138,20 @@ function contactValue(...values) {
   return value ? compact(value, 500) || null : null;
 }
 
+function validEmail(value) {
+  const email = contactValue(value);
+  return email &&
+    /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+$/i.test(email)
+    ? email
+    : null;
+}
+
+function validPhone(value) {
+  const phone = contactValue(value);
+  const digits = phone?.replace(/\D/g, "") || "";
+  return digits.length >= 8 && digits.length <= 15 ? phone : null;
+}
+
 function imageUrl(image, baseUrl) {
   const value = firstValue(image);
   if (typeof value === "string") return absoluteUrl(value, baseUrl);
@@ -153,18 +168,24 @@ function locationData(location) {
       address: null,
       street_address: null,
       street_number: null,
-      postal_code: null
+      postal_code: null,
+      province: null
     };
   }
   if (typeof item === "string") {
     const rawAddress = compact(item, 500);
+    const parsedAddress = rawAddress.match(/^(.*?)[,\s]+(\d{5})\s+([^,]+)$/);
+    const splitAddress = splitStreetAddress(parsedAddress?.[1] || rawAddress);
+    const streetAddress = splitAddress.street_address;
+    const streetNumber = splitAddress.street_number;
     return {
-      city: null,
+      city: compact(parsedAddress?.[3] || "", 150) || null,
       venue: rawAddress,
       address: rawAddress,
-      street_address: rawAddress,
-      street_number: rawAddress.match(/(?:^|\s)(\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)?)$/)?.[1] || null,
-      postal_code: null
+      street_address: streetAddress,
+      street_number: streetNumber,
+      postal_code: parsedAddress?.[2] || null,
+      province: null
     };
   }
 
@@ -207,28 +228,60 @@ function locationData(location) {
     "",
     30
   ) || null;
+  const splitAddress = splitStreetAddress(streetAddress, streetNumber);
+  const province = compact(
+    address?.addressRegion ||
+    place.addressRegion ||
+    item.addressRegion ||
+    "",
+    100
+  ) || null;
   const numberMatch = streetAddress?.match(/(?:^|\s)(\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)?)$/);
   const fullAddress = [
-    streetAddress,
+    splitAddress.street_address,
+    splitAddress.street_number && splitAddress.street_address &&
+      !splitAddress.street_address.endsWith(` ${splitAddress.street_number}`)
+      ? splitAddress.street_number
+      : "",
     postalCode,
     city,
-    address?.addressRegion || place.addressRegion || item.addressRegion
+    province
   ].filter(Boolean).join(", ");
 
   return {
     city,
     venue: compact(place.name || item.name || "", 300) || null,
     address: compact(fullAddress, 500) || null,
-    street_address: streetAddress,
-    street_number: streetNumber || numberMatch?.[1] || null,
-    postal_code: postalCode
+    street_address: splitAddress.street_address,
+    street_number: splitAddress.street_number || numberMatch?.[1] || null,
+    postal_code: postalCode,
+    province
+  };
+}
+
+function splitStreetAddress(value, explicitNumber = null) {
+  const streetAddress = compact(value || "", 300) || null;
+  if (!streetAddress) return { street_address: null, street_number: null };
+
+  const trailingNumber = streetAddress.match(
+    /(?:,\s*|\s+)(\d+[a-zA-Z]?(?:\/[0-9a-zA-Z]+)?)$/
+  );
+  const number = compact(explicitNumber || trailingNumber?.[1] || "", 30) || null;
+  const normalizedStreet = trailingNumber &&
+    (!explicitNumber || explicitNumber === trailingNumber[1])
+    ? streetAddress.slice(0, trailingNumber.index).trim()
+    : streetAddress;
+
+  return {
+    street_address: normalizedStreet || streetAddress,
+    street_number: number
   };
 }
 
 function locationCoordinates(location) {
   const item = firstValue(location);
   const place = firstValue(item?.location) || item;
-  const geo = firstValue(place?.geo || item?.geo);
+  const geo = firstValue(place?.geo || place?.location?.geo || item?.geo);
   const latitude = geo?.latitude == null ? NaN : Number(geo.latitude);
   const longitude = geo?.longitude == null ? NaN : Number(geo.longitude);
   return {
@@ -252,11 +305,37 @@ function metaContent($, selectors) {
   return null;
 }
 
+function itempropValue($, property, scope = null) {
+  const root = scope?.length ? scope : $("body");
+  const selector = `[itemprop="${property}"]`;
+  const element = root.find(selector).add(root.filter(selector)).first();
+  const value = element.attr("content") ||
+    element.attr("value") ||
+    element.attr("datetime") ||
+    element.attr("href") ||
+    element.attr("data-value") ||
+    element.text();
+  return compact(value || "", 500) || null;
+}
+
 function resolveJsonLdReference(value, nodes) {
   const entity = firstValue(value);
-  if (!entity || typeof entity !== "object" || !entity["@id"]) return entity;
-  const referenced = nodes.find((node) => node["@id"] === entity["@id"]);
-  return referenced ? { ...entity, ...referenced } : entity;
+  return resolveJsonLdEntity(entity, nodes, 0);
+}
+
+function resolveJsonLdEntity(entity, nodes, depth) {
+  if (!entity || typeof entity !== "object" || depth > 4) return entity;
+  const referenced = entity["@id"]
+    ? nodes.find((node) => node["@id"] === entity["@id"])
+    : null;
+  const resolved = referenced ? { ...entity, ...referenced } : { ...entity };
+  for (const key of ["location", "address", "geo", "organizer", "contactPoint", "offers"]) {
+    if (!resolved[key]) continue;
+    resolved[key] = Array.isArray(resolved[key])
+      ? resolved[key].map((value) => resolveJsonLdEntity(value, nodes, depth + 1))
+      : resolveJsonLdEntity(resolved[key], nodes, depth + 1);
+  }
+  return resolved;
 }
 
 function extractPageEnrichment(html, pageUrl) {
@@ -271,78 +350,185 @@ function extractPageEnrichment(html, pageUrl) {
   });
   const eventNode = jsonLdNodes.find(isEventNode) || {};
   const organizer = resolveJsonLdReference(eventNode.organizer, jsonLdNodes);
-  const place = resolveJsonLdReference(eventNode.location, jsonLdNodes);
-  const contactPoint = resolveJsonLdReference(
-    organizer?.contactPoint || eventNode.contactPoint,
+  const placeNode = jsonLdNodes.find((node) =>
+    (Array.isArray(node["@type"]) ? node["@type"] : [node["@type"]])
+      .some((type) => /(?:^|\/)Place$/i.test(String(type || "")))
+  );
+  const postalAddressNode = jsonLdNodes.find((node) =>
+    (Array.isArray(node["@type"]) ? node["@type"] : [node["@type"]])
+      .some((type) => /PostalAddress$/i.test(String(type || "")))
+  );
+  const place = resolveJsonLdReference(
+    eventNode.location || placeNode || postalAddressNode,
     jsonLdNodes
   );
+  const microdataEvent = $("[itemtype]").filter((_, element) =>
+    /(?:^|\s)(?:https?:\/\/schema\.org\/)?[A-Za-z]*Event\b/i.test(
+      $(element).attr("itemtype") || ""
+    )
+  ).first();
+  const microdataLocation = microdataEvent.find(
+    '[itemprop="location"], [itemtype*="Place"]'
+  ).first();
+  const microdataAddress = microdataLocation.find(
+    '[itemprop="address"], [itemtype*="PostalAddress"]'
+  ).first();
+  const microdataPropertyScope = microdataAddress.length
+    ? microdataAddress
+    : microdataLocation.length
+      ? microdataLocation
+      : microdataEvent;
+  const contactPoint = resolveJsonLdReference(
+    organizer?.contactPoint ||
+      eventNode.contactPoint ||
+      jsonLdNodes.find((node) =>
+        (Array.isArray(node["@type"]) ? node["@type"] : [node["@type"]])
+          .some((type) => /contactpoint/i.test(String(type || "")))
+      ),
+    jsonLdNodes
+  );
+  const microdataContactScope = microdataEvent.length ? microdataEvent : $("body");
   const offer = resolveJsonLdReference(eventNode.offers, jsonLdNodes);
   const offerUrl = offer?.url || offer?.offers?.url;
   const addressData = locationData(place);
+  const microdataAddressData = locationData({
+    name: $("[itemprop='location'] [itemprop='name']").first().text(),
+    address: {
+      streetAddress: itempropValue($, "streetAddress", microdataPropertyScope),
+      streetNumber: itempropValue($, "streetNumber", microdataPropertyScope) ||
+        itempropValue($, "street_number", microdataPropertyScope),
+      postalCode: itempropValue($, "postalCode", microdataPropertyScope),
+      addressLocality: itempropValue($, "addressLocality", microdataPropertyScope),
+      addressRegion: itempropValue($, "addressRegion", microdataPropertyScope)
+    },
+    geo: {
+      latitude: itempropValue($, "latitude", microdataLocation.length ? microdataLocation : microdataEvent),
+      longitude: itempropValue($, "longitude", microdataLocation.length ? microdataLocation : microdataEvent)
+    }
+  });
+  const microdataAddressTextData = locationData(
+    itempropValue($, "address", microdataLocation.length ? microdataLocation : microdataEvent)
+  );
+  const pageContentRoot = $("main, article").first();
+  const pageContent = pageContentRoot.length ? pageContentRoot : $("body");
+  const pageAddressText = pageContent.find("address, [itemprop='address'], [class*='address' i], [class*='venue' i], .field--type-address p, .card-place .card-text")
+    .add(pageContent.filter("address, [itemprop='address'], [class*='address' i], [class*='venue' i], .field--type-address p, .card-place .card-text"))
+    .map((_, element) => compact($(element).text(), 500))
+    .get()
+    .find((value) => value && value.length <= 500) || null;
+  const pageAddressData = locationData(pageAddressText);
   const coordinates = locationCoordinates(place);
   const phoneLink = $('a[href^="tel:"]').map((_, link) => $(link).attr("href").slice(4)).get()[0];
   const emailLink = $('a[href^="mailto:"]').map((_, link) => $(link).attr("href").slice(7).split("?")[0]).get()[0];
-  const contactText = $("address, [itemprop='contactPoint'], [class*='contact' i], [id*='contact' i]")
+  const contactText = pageContent.find("address, [itemprop='contactPoint'], [class*='contact' i], [id*='contact' i]")
+    .add(pageContent.filter("address, [itemprop='contactPoint'], [class*='contact' i], [id*='contact' i]"))
     .map((_, element) => $(element).text())
     .get()
     .join(" ");
+  const contentText = compact(pageContent.text(), 16000);
   const phoneFromContactText = contactText.match(
     /(?:\+|00)?39[\s().-]*[03](?:[\s().-]*\d){7,10}|(?:\+|00)?[03](?:[\s().-]*\d){8,10}/
+  )?.[0] || contentText.match(
+    /(?:\+|00)?39[\s().-]*[03](?:[\s().-]*\d){7,10}|(?:\+|00)?[03](?:[\s().-]*\d){8,10}/
   )?.[0];
-  const emailFromContactText = contactText.match(
-    /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+/i
-  )?.[0];
+  const emailSearchText = phoneFromContactText
+    ? contactText.replace(phoneFromContactText, " ")
+    : contactText;
+  const pageEmailSearchText = phoneFromContactText
+    ? contentText.replace(phoneFromContactText, " ")
+    : contentText;
+  const emailFromContactText = emailSearchText.match(
+    /(?:^|[^A-Z0-9.!#$%&'*+/=?^_`{|}~-])([A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+)/i
+  )?.[1];
+  const emailFromPageText = pageEmailSearchText.match(
+    /(?:^|[^A-Z0-9.!#$%&'*+/=?^_`{|}~-])([A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+)/i
+  )?.[1];
   const bookingLink = $("a[href]").toArray().find((link) => {
     const href = $(link).attr("href") || "";
-    const label = compact(`${$(link).text()} ${$(link).attr("aria-label") || ""}`, 500);
-    return /prenot|booking|bigliett|ticket|acquist/i.test(label) && !/^(?:mailto:|tel:)/i.test(href);
+    const label = compact(
+      `${$(link).text()} ${$(link).attr("aria-label") || ""} ${href}`,
+      1000
+    );
+    return /prenot|booking|bigliett|ticket|acquist|iscrizion/i.test(label) &&
+      !/^(?:mailto:|tel:|javascript:)/i.test(href);
   });
-  const bookingUrl = bookingLink ? absoluteUrl($(bookingLink).attr("href"), pageUrl) : null;
+  const bookingUrl = bookingLink
+    ? absoluteHttpUrl($(bookingLink).attr("href"), pageUrl)
+    : null;
   const streetAddress = firstText(
+    addressData.street_address,
+    microdataAddressData.street_address,
+    microdataAddressTextData.street_address,
     metaContent($, [
       'meta[itemprop="streetAddress"]',
       'meta[property="place:location:street_address"]',
       'meta[name="street-address"]',
       'meta[name="address"]'
     ]),
-    $('[itemprop="streetAddress"]').first().text(),
+    itempropValue($, "streetAddress", microdataPropertyScope),
+    pageAddressData.street_address,
     $("address").first().text(),
     $(".street-address").first().text()
   );
   const streetNumber = firstText(
     addressData.street_number,
+    microdataAddressData.street_number,
+    microdataAddressTextData.street_number,
     metaContent($, [
       'meta[itemprop="streetNumber"]',
       'meta[itemprop="street_number"]',
       'meta[name="street-number"]',
       'meta[name="house-number"]'
     ]),
-    $('[itemprop="streetNumber"]').first().text(),
-    $('[itemprop="street_number"]').first().text()
+    itempropValue($, "streetNumber", microdataPropertyScope),
+    itempropValue($, "street_number", microdataPropertyScope),
+    pageAddressData.street_number
   );
   const postalCode = firstText(
     addressData.postal_code,
+    microdataAddressData.postal_code,
+    microdataAddressTextData.postal_code,
     metaContent($, [
       'meta[itemprop="postalCode"]',
       'meta[name="postal-code"]',
       'meta[property="place:location:zip"]'
     ]),
-    $('[itemprop="postalCode"]').first().text()
+    itempropValue($, "postalCode", microdataPropertyScope),
+    pageAddressData.postal_code
   );
   const city = firstText(
     addressData.city,
+    microdataAddressData.city,
+    microdataAddressTextData.city,
     metaContent($, [
       'meta[itemprop="addressLocality"]',
       'meta[name="locality"]',
       'meta[property="place:location:locality"]'
     ]),
-    $('[itemprop="addressLocality"]').first().text()
+    itempropValue($, "addressLocality", microdataPropertyScope),
+    pageAddressData.city
+  );
+  const province = firstText(
+    addressData.province,
+    microdataAddressData.province,
+    microdataAddressTextData.province,
+    metaContent($, [
+      'meta[itemprop="addressRegion"]',
+      'meta[name="region"]',
+      'meta[property="place:location:region"]'
+    ]),
+    itempropValue($, "addressRegion", microdataPropertyScope),
+    pageAddressData.province
   );
   const locationAddress = [
     streetAddress,
+    streetNumber && streetAddress &&
+      !new RegExp(`(?:^|\\s)${streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(streetAddress)
+      ? streetNumber
+      : "",
     postalCode,
     city,
-    metaContent($, ['meta[itemprop="addressRegion"]'])
+    province
   ].filter(Boolean).join(", ");
   const geoPosition = metaContent($, [
     'meta[name="geo.position"]',
@@ -351,73 +537,135 @@ function extractPageEnrichment(html, pageUrl) {
   const geoParts = geoPosition?.split(/[;,]\s*/) || [];
   const latitudeValue = metaContent($, [
     'meta[itemprop="latitude"]',
-    'meta[property="place:location:latitude"]'
-  ]) || geoParts[0];
+    'meta[property="place:location:latitude"]',
+    'meta[property="og:latitude"]'
+  ]) || itempropValue($, "latitude", microdataLocation.length ? microdataLocation : microdataEvent) || geoParts[0];
   const longitudeValue = metaContent($, [
     'meta[itemprop="longitude"]',
-    'meta[property="place:location:longitude"]'
-  ]) || geoParts[1];
-  const latitude = coordinates.latitude ?? Number(latitudeValue);
-  const longitude = coordinates.longitude ?? Number(longitudeValue);
+    'meta[property="place:location:longitude"]',
+    'meta[property="og:longitude"]'
+  ]) || itempropValue($, "longitude", microdataLocation.length ? microdataLocation : microdataEvent) || geoParts[1];
+  const latitude = coordinates.latitude ?? microdataAddressData.latitude ?? Number(latitudeValue);
+  const longitude = coordinates.longitude ?? microdataAddressData.longitude ?? Number(longitudeValue);
   const numberMatch = streetAddress?.match(/(?:^|\s)(\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)?)$/);
   const canonicalUrl = $("link[rel='canonical']").first().attr("href");
-  const ogUrl = metaContent($, ['meta[property="og:url"]']);
+  const ogUrl = metaContent($, [
+    'meta[property="og:url"]',
+    'meta[property="og:see_also"]'
+  ]);
+  const bookingMetadata = eventNode.bookingRequired ??
+    itempropValue($, "bookingRequired") ??
+    metaContent($, ['meta[name="booking-required"]', 'meta[property="event:booking_required"]']);
+  const metadataRequiresBooking = bookingMetadata === true ||
+    /^(?:true|required|obbligator\w*|richiest\w*)$/i.test(String(bookingMetadata || "").trim());
+  const metadataDoesNotRequireBooking = bookingMetadata === false ||
+    /^(?:false|optional|not required|non obbligator\w*|non richiest\w*)$/i.test(String(bookingMetadata || "").trim());
+  const reservationRequired = metadataRequiresBooking ||
+    /prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|prenotare\s+(?:è\s+)?obbligator\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*/i.test(contentText);
+  const reservationRecommended = /prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*/i.test(contentText);
+  const reservationNotRequired = /(?:prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|non\s+(?:è\s+)?necessari\w*\s+prenotazion\w*|senza\s+prenotazion\w*)/i.test(contentText);
+  const bookingNotes = reservationRequired
+    ? firstText(contentText.match(/.{0,70}(?:prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*).{0,100}/i)?.[0])
+    : reservationRecommended
+      ? firstText(contentText.match(/.{0,70}(?:prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*).{0,100}/i)?.[0])
+      : reservationNotRequired
+        ? firstText(contentText.match(/.{0,70}(?:prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|senza\s+prenotazion\w*).{0,100}/i)?.[0])
+        : null;
 
   return {
     organizer: entityName(organizer) ||
+      entityName(contactPoint) ||
       metaContent($, [
         'meta[itemprop="organizer"]',
         'meta[name="organizer"]'
       ]) ||
-      $('[itemprop="organizer"]').first().text().trim() ||
+      itempropValue($, "organizer", microdataContactScope) ||
       null,
-    phone: contactValue(
+    phone: validPhone(contactValue(
       eventNode.telephone,
-      organizer?.telephone,
       contactPoint?.telephone,
-      metaContent($, ['meta[itemprop="telephone"]', 'meta[property="og:phone_number"]']),
+      organizer?.telephone,
+      itempropValue($, "telephone", microdataContactScope),
       phoneLink,
+      metaContent($, ['meta[property="og:phone_number"]']),
       phoneFromContactText
-    ),
-    email: contactValue(
+    )),
+    email: validEmail(contactValue(
       eventNode.email,
-      organizer?.email,
       contactPoint?.email,
-      metaContent($, ['meta[itemprop="email"]']),
-      $('[itemprop="email"]').first().text(),
+      organizer?.email,
+      itempropValue($, "email", microdataContactScope),
       emailLink,
-      emailFromContactText
-    ),
+      metaContent($, ['meta[property="og:email"]']),
+      emailFromContactText,
+      emailFromPageText
+    )),
     booking_url: (offerUrl && absoluteHttpUrl(offerUrl, pageUrl)) ||
       absoluteHttpUrl(bookingUrl, pageUrl),
-    official_url: absoluteHttpUrl(canonicalUrl || ogUrl || eventNode.url || pageUrl, pageUrl),
+    booking_required: reservationRequired
+      ? true
+      : metadataDoesNotRequireBooking || reservationRecommended || reservationNotRequired
+        ? false
+        : null,
+    booking_notes: bookingNotes || (bookingUrl ? "Prenotazione online disponibile" : null),
+    official_url: [
+      eventNode.url,
+      organizer?.url,
+      canonicalUrl,
+      ogUrl,
+      pageUrl
+    ].map((candidate) => absoluteHttpUrl(candidate, pageUrl)).find(Boolean) || null,
     address: addressData.address || locationAddress || streetAddress || null,
     street_address: addressData.street_address || streetAddress,
-    street_number: streetNumber || numberMatch?.[1] || null,
+    street_number: streetNumber || addressData.street_number || numberMatch?.[1] || null,
     postal_code: postalCode,
     city,
+    province,
     latitude: Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 ? latitude : null,
     longitude: Number.isFinite(longitude) && longitude >= -180 && longitude <= 180 ? longitude : null
   };
 }
 
-function enrichEventFromPage(event, html, pageUrl) {
-  const enrichment = extractPageEnrichment(html, pageUrl);
+function mergePageEnrichment(event, enrichment, pageUrl) {
+  const parsedEventAddress = locationData(event.address);
+  const streetAddress = event.street_address ||
+    enrichment.street_address ||
+    parsedEventAddress.street_address;
+  const streetNumber = event.street_number ||
+    enrichment.street_number ||
+    parsedEventAddress.street_number;
+  const splitAddress = splitStreetAddress(streetAddress, streetNumber);
   return {
     ...event,
+    _page_enriched: true,
     organizer: event.organizer || enrichment.organizer,
-    phone: event.phone || enrichment.phone,
-    email: event.email || enrichment.email,
-    booking_url: event.booking_url || enrichment.booking_url,
-    official_url: enrichment.official_url || event.official_url || event.source_url || null,
+    phone: validPhone(event.phone) || enrichment.phone,
+    email: validEmail(event.email) || enrichment.email,
+    booking_url: absoluteHttpUrl(event.booking_url, pageUrl) || enrichment.booking_url,
+    booking_required: event.booking_required ?? enrichment.booking_required,
+    booking_notes: event.booking_notes || enrichment.booking_notes,
+    official_url: [
+      event.official_url,
+      enrichment.official_url,
+      event.source_url
+    ].map((candidate) => absoluteHttpUrl(candidate, pageUrl)).find(Boolean) || null,
     address: event.address || enrichment.address,
-    street_address: event.street_address || enrichment.street_address,
-    street_number: event.street_number || enrichment.street_number,
+    street_address: splitAddress.street_address,
+    street_number: splitAddress.street_number,
     postal_code: event.postal_code || enrichment.postal_code,
     city: enrichment.city || event.city,
+    province: event.province || enrichment.province,
     latitude: event.latitude ?? enrichment.latitude,
     longitude: event.longitude ?? enrichment.longitude
   };
+}
+
+function enrichEventFromPage(event, html, pageUrl) {
+  return mergePageEnrichment(
+    event,
+    extractPageEnrichment(html, pageUrl),
+    pageUrl
+  );
 }
 
 function validDate(value) {
@@ -441,7 +689,14 @@ function normalizeEvent(node, source, pageUrl) {
   const loc = locationData(node.location);
   const coordinates = locationCoordinates(node.location);
   const city = loc.city || source.comune || null;
-  const sourceUrl = absoluteUrl(node.url || node.mainEntityOfPage || pageUrl, pageUrl) || pageUrl;
+  const mainEntityUrl = typeof node.mainEntityOfPage === "string"
+    ? node.mainEntityOfPage
+    : node.mainEntityOfPage?.url || node.mainEntityOfPage?.["@id"];
+  const sourceUrl = [
+    node.url,
+    mainEntityUrl,
+    pageUrl
+  ].map((candidate) => absoluteHttpUrl(candidate, pageUrl)).find(Boolean) || pageUrl;
   const organizer = firstValue(node.organizer);
   const contactPoint = firstValue(organizer?.contactPoint || node.contactPoint);
   const offer = firstValue(node.offers);
@@ -460,15 +715,18 @@ function normalizeEvent(node, source, pageUrl) {
     street_address: loc.street_address,
     street_number: loc.street_number,
     postal_code: loc.postal_code,
+    province: loc.province,
     latitude: coordinates.latitude,
     longitude: coordinates.longitude,
     source_name: source.name,
     organizer: entityName(organizer),
-    phone: contactValue(node.telephone, organizer?.telephone, contactPoint?.telephone),
-    email: contactValue(node.email, organizer?.email, contactPoint?.email),
-    booking_url: offerUrl ? absoluteUrl(offerUrl, pageUrl) : null,
+    phone: validPhone(contactValue(node.telephone, contactPoint?.telephone, organizer?.telephone)),
+    email: validEmail(contactValue(node.email, contactPoint?.email, organizer?.email)),
+    booking_url: offerUrl ? absoluteHttpUrl(offerUrl, pageUrl) : null,
+    booking_required: null,
+    booking_notes: null,
     website_url: organizer?.url ? absoluteUrl(organizer.url, pageUrl) : null,
-    official_url: sourceUrl
+    official_url: absoluteHttpUrl(sourceUrl, pageUrl)
   };
 
   event.import_key = eventKey(event);
@@ -3654,17 +3912,20 @@ async function collectSourceEvents(source) {
 }
 
 async function findExistingEvent(event) {
-  let query = supabase
+  const { data, error } = await supabase
     .from("events")
-    .select("id,city,address,street_number,postal_code,latitude,longitude,organizer,phone,email,official_url,booking_url")
+    .select("*")
     .eq("title", event.title)
     .eq("starts_on", event.starts_on)
-    .limit(1);
-
-  query = event.city ? query.eq("city", event.city) : query.is("city", null);
-  const { data, error } = await query;
+    .limit(10);
   if (error) throw error;
-  return data?.[0] || null;
+  const matches = data || [];
+  if (event.city) {
+    return matches.find((item) => item.city === event.city) ||
+      (matches.length === 1 && !matches[0].city ? matches[0] : null);
+  }
+  return matches.find((item) => !item.city) ||
+    (matches.length === 1 ? matches[0] : null);
 }
 
 async function enrichExistingEvent(existing, event) {
@@ -3672,19 +3933,30 @@ async function enrichExistingEvent(existing, event) {
   const values = {
     city: event.city,
     address: event.address,
+    street_address: event.street_address,
     street_number: event.street_number,
     postal_code: event.postal_code,
+    province: event.province,
     latitude: event.latitude,
     longitude: event.longitude,
     organizer: event.organizer,
     phone: event.phone,
     email: event.email,
-    official_url: event.official_url || event.source_url,
-    booking_url: event.booking_url
+    official_url: [
+      event.official_url,
+      event.source_url
+    ].map((candidate) => absoluteHttpUrl(candidate, event.source_url)).find(Boolean) || null,
+    booking_url: absoluteHttpUrl(event.booking_url, event.source_url),
+    booking_required: event.booking_required,
+    booking_notes: event.booking_notes
   };
 
   for (const [field, value] of Object.entries(values)) {
-    const isPresent = typeof value === "number" ? Number.isFinite(value) : Boolean(value?.trim?.());
+    const isPresent = typeof value === "number"
+      ? Number.isFinite(value)
+      : typeof value === "boolean"
+        ? true
+        : Boolean(value?.trim?.());
     const isEmpty = existing[field] == null || existing[field] === "";
     if (isPresent && isEmpty) patch[field] = value;
   }
@@ -3803,16 +4075,23 @@ const row = {
   ends_on: event.ends_on || null,
   source_url: event.source_url || null,
   address: event.address || null,
+  street_address: event.street_address || null,
   street_number: event.street_number || null,
   postal_code: event.postal_code || null,
+  province: event.province || null,
   latitude: event.latitude ?? null,
   longitude: event.longitude ?? null,
   organizer: event.organizer || null,
-  phone: event.phone || null,
-  email: event.email || null,
-  booking_url: event.booking_url || null,
-  website_url: event.website_url || null,
-  official_url: event.official_url || event.source_url || null,
+  phone: validPhone(event.phone),
+  email: validEmail(event.email),
+  booking_url: absoluteHttpUrl(event.booking_url, event.source_url),
+  booking_required: event.booking_required ?? null,
+  booking_notes: event.booking_notes || null,
+  website_url: absoluteHttpUrl(event.website_url, event.source_url),
+  official_url: [
+    event.official_url,
+    event.source_url
+  ].map((candidate) => absoluteHttpUrl(candidate, event.source_url)).find(Boolean) || null,
   description: event.description,
   age_range: ageRange || null
 };
@@ -3824,6 +4103,85 @@ const row = {
 async function updateSource(source, patch) {
   const { error } = await supabase.from("sources").update(patch).eq("id", source.id);
   if (error) console.warn(`  source log not updated: ${error.message}`);
+}
+
+async function reportEventEnrichment() {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("events")
+      .select("*")
+      .range(from, from + 999);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+
+  const hasText = (value) => typeof value === "string" && Boolean(value.trim());
+  const hasCoordinates = (event) => {
+    const latitude = Number(event.latitude);
+    const longitude = Number(event.longitude);
+    return event.latitude !== null &&
+      event.latitude !== undefined &&
+      event.longitude !== null &&
+      event.longitude !== undefined &&
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180;
+  };
+  const columns = new Set(Object.keys(rows[0] || {}));
+  const countField = (field) => columns.has(field)
+    ? rows.filter((event) => hasText(event[field])).length
+    : null;
+  const stats = {
+    total: rows.length,
+    address: countField("address"),
+    street_number: countField("street_number"),
+    postal_code: countField("postal_code"),
+    city: countField("city"),
+    province: countField("province"),
+    latitude_longitude: columns.has("latitude") && columns.has("longitude")
+      ? rows.filter(hasCoordinates).length
+      : null,
+    organizer: countField("organizer"),
+    phone: countField("phone"),
+    email: countField("email"),
+    booking_url: countField("booking_url"),
+    official_url: countField("official_url")
+  };
+  const exampleFields = [
+    "address",
+    "street_number",
+    "postal_code",
+    "city",
+    "province",
+    "latitude",
+    "longitude",
+    "organizer",
+    "phone",
+    "email",
+    "booking_url",
+    "official_url"
+  ];
+  const examples = rows
+    .filter((event) => exampleFields.some((field) => hasText(event[field])))
+    .slice(0, 10)
+    .map((event) => Object.fromEntries([
+      ["title", event.title],
+      ...exampleFields
+        .filter((field) => columns.has(field) && hasText(event[field]))
+        .map((field) => [field, event[field]])
+    ]));
+
+  console.log("--- EVENT ENRICHMENT REPORT ---");
+  for (const [field, count] of Object.entries(stats)) {
+    console.log(`${field}: ${count ?? "unavailable (apply event enrichment migrations)"}`);
+  }
+  console.log("Examples:");
+  for (const example of examples) console.log(JSON.stringify(example));
 }
 
 
@@ -4448,8 +4806,37 @@ function isExpiredEvent(event) {
   return expiryDate.getTime() < Date.now();
 }
 
+async function assertEnrichmentSchema() {
+  const requiredColumns = [
+    "address",
+    "street_address",
+    "street_number",
+    "postal_code",
+    "province",
+    "latitude",
+    "longitude",
+    "organizer",
+    "phone",
+    "email",
+    "booking_url",
+    "booking_required",
+    "booking_notes",
+    "official_url"
+  ];
+  const { data, error } = await supabase.from("events").select("*").limit(1);
+  if (error) throw error;
+  const availableColumns = new Set(Object.keys(data?.[0] || {}));
+  const missingColumns = requiredColumns.filter((column) => !availableColumns.has(column));
+  if (missingColumns.length > 0) {
+    throw new Error(
+      `Cannot write event enrichment: apply Supabase event migrations first. Missing columns: ${missingColumns.join(", ")}`
+    );
+  }
+}
+
 async function main() {
   console.log(WRITE ? "EVENT IMPORT: WRITE MODE" : "EVENT IMPORT: PREVIEW MODE");
+  if (WRITE) await assertEnrichmentSchema();
 
   let query = supabase
     .from("sources")
@@ -4474,6 +4861,7 @@ async function main() {
   let enriched = 0;
   let duplicates = 0;
   let failedSources = 0;
+  const pageEnrichmentCache = new Map();
 
   for (const [index, source] of sources.entries()) {
     console.log(`[${index + 1}/${sources.length}] ${source.name}`);
@@ -4488,6 +4876,27 @@ async function main() {
         if (isExpiredEvent(event)) {
           console.log(`  SKIP EXPIRED: ${event.title}`);
           continue;
+        }
+
+        const eventPageUrl = absoluteHttpUrl(event.source_url, source.url);
+        if (eventPageUrl && !event._page_enriched) {
+          try {
+            let pageEnrichment = pageEnrichmentCache.get(eventPageUrl);
+            if (!pageEnrichment) {
+              await sleep(300);
+              const pageHtml = await fetchText(eventPageUrl);
+              pageEnrichment = extractPageEnrichment(pageHtml, eventPageUrl);
+              pageEnrichmentCache.set(eventPageUrl, pageEnrichment);
+            }
+            Object.assign(
+              event,
+              mergePageEnrichment(event, pageEnrichment, eventPageUrl)
+            );
+          } catch (enrichmentError) {
+            console.warn(
+              `  ENRICHMENT SKIP ${event.title}: ${enrichmentError.message}`
+            );
+          }
         }
 
         const isPratoChildrenEvent =
@@ -4560,6 +4969,8 @@ async function main() {
   console.log(`Inserted: ${inserted}`);
   console.log(`Failed sources: ${failedSources}`);
   if (!WRITE) console.log("Preview only. Run with --write to insert new events.");
+
+  await reportEventEnrichment();
 
   if (failedSources === sources.length && sources.length > 0) process.exitCode = 1;
 }
