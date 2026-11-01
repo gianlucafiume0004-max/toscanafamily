@@ -330,6 +330,202 @@ function eventSearchText(event) {
     .toLocaleLowerCase("it-IT");
 }
 
+function eventText(event) {
+  return [event.cost, event.description].filter(isUsableEventText).join(" ");
+}
+
+function eventPhoneData(event) {
+  const description = String(event.description || "");
+  const phoneFromDescription = description.match(
+    /(?:\+|00)?39[\s().-]*[03](?:[\s().-]*\d){7,10}|(?:\+|00)?[03](?:[\s().-]*\d){8,10}/
+  )?.[0];
+  const phone = isUsableEventText(event.phone)
+    ? event.phone.trim()
+    : phoneFromDescription || "";
+  const digits = phone.replace(/\D/g, "");
+  if (!digits || digits.length < 8 || digits.length > 15) {
+    return { phone: "", phoneLink: "", whatsappUrl: "" };
+  }
+
+  const trimmedPhone = phone.trim();
+  const explicitInternational = trimmedPhone.startsWith("+") || trimmedPhone.startsWith("00");
+  let internationalDigits = digits;
+  if (trimmedPhone.startsWith("00")) internationalDigits = internationalDigits.slice(2);
+  if (!explicitInternational && /^[03]/.test(internationalDigits)) {
+    internationalDigits = `39${internationalDigits}`;
+  }
+
+  if (internationalDigits.length < 8 || internationalDigits.length > 15) {
+    return { phone: "", phoneLink: "", whatsappUrl: "" };
+  }
+
+  const localItalianNumber = internationalDigits.startsWith("39") ? internationalDigits.slice(2) : "";
+  const isItalianMobile = localItalianNumber.startsWith("3") &&
+    (localItalianNumber.length === 9 || localItalianNumber.length === 10);
+
+  return {
+    phone,
+    phoneLink: `tel:+${internationalDigits}`,
+    whatsappUrl: isItalianMobile ? `https://wa.me/${internationalDigits}` : ""
+  };
+}
+
+function eventEmail(event) {
+  if (isUsableEventText(event.email)) return event.email.trim();
+  const found = String(event.description || "").match(
+    /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+(?![A-Z0-9.-])/i
+  )?.[0];
+  if (!found) return "";
+
+  const [localPart, ...domainParts] = found.split("@");
+  const cleanedLocalPart = localPart.replace(/^\d{8,}(?=[A-Z])/i, "");
+  const email = `${cleanedLocalPart}@${domainParts.join("@")}`;
+  return /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+$/i.test(email)
+    ? email
+    : "";
+}
+
+function eventActionItems(event) {
+  const { phoneLink, whatsappUrl } = eventPhoneData(event);
+  const email = eventEmail(event);
+  const officialUrl = getHttpUrl(event.official_url) || getHttpUrl(event.source_url);
+  const bookingUrl = getHttpUrl(event.booking_url);
+  return [
+    phoneLink && {
+      label: "📞 Chiama",
+      href: phoneLink,
+      className: "event-booking-button--phone"
+    },
+    whatsappUrl && {
+      label: "💬 WhatsApp",
+      href: whatsappUrl,
+      className: "event-booking-button--whatsapp",
+      external: true
+    },
+    email && {
+      label: "✉️ Email",
+      href: `mailto:${email}`,
+      className: "event-booking-button--email"
+    },
+    officialUrl && {
+      label: "🌐 Apri sito",
+      href: officialUrl,
+      className: "event-booking-button--website",
+      external: true
+    },
+    bookingUrl && {
+      label: "🎟️ Prenota online",
+      href: bookingUrl,
+      className: "event-booking-button--online",
+      external: true
+    }
+  ].filter(Boolean);
+}
+
+function EventDirectActions({ actions, className = "" }) {
+  if (!actions.length) return null;
+  return (
+    <div className={`event-direct-actions ${className}`.trim()}>
+      {actions.map((action) => (
+        <a
+          className={`event-booking-button ${action.className}`}
+          href={action.href}
+          key={action.label}
+          target={action.external ? "_blank" : undefined}
+          rel={action.external ? "noopener noreferrer" : undefined}
+        >
+          {action.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function eventCostInfo(event) {
+  const costText = [event.cost, event.description]
+    .filter(isUsableEventText)
+    .join(" ");
+  if (!costText) return null;
+
+  const priceMatch = costText.match(
+    /(?:\bda\s*)?(?:€\s*|eur(?:o)?\s*)(\d+(?:[.,]\d{1,2})?|\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?)(?!\d)|(?:\bda\s*)?(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur(?:o)?\b)/i
+  );
+  const amount = priceMatch?.[1] || priceMatch?.[2];
+  const reservationRequired =
+    /prenotazion\w*\s+obbligator\w*|obbligo\s+di\s+prenotazion\w*/i.test(costText);
+  if (amount) {
+    const isStartingPrice = /^\s*da\b/i.test(priceMatch[0]);
+    const formattedAmount = amount.replace(/\.(?=\d{1,2}$)/, ",");
+    return {
+      type: "paid",
+      title: `🔴 ${isStartingPrice ? "Da " : ""}€ ${formattedAmount}`,
+      price: "",
+      reservationRequired
+    };
+  }
+
+  const free = /\b(?:gratuit\w*|gratis|free|ingresso\s+libero)\b/i.test(costText);
+
+  if (reservationRequired) {
+    if (free) {
+      return {
+        type: "free",
+        title: "🟢 Gratuito",
+        price: "",
+        reservationRequired: true
+      };
+    }
+    return {
+      type: "reservation",
+      title: "🟡 Prenotazione obbligatoria",
+      price: free ? "Gratis con prenotazione" : ""
+    };
+  }
+  if (free) return { type: "free", title: "🟢 Gratuito", price: "" };
+  return null;
+}
+
+function eventReservationStatus(event) {
+  const text = eventText(event);
+  if (/prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*/i.test(text)) {
+    return "Obbligatoria";
+  }
+  if (/prenotazion\w*\s+consigliat\w*|su\s+prenotazion\w*|consigliat\w*.{0,30}prenotazion\w*/i.test(text)) {
+    return "Consigliata";
+  }
+  return "Non richiesta";
+}
+
+function eventReservationText(event) {
+  const status = eventReservationStatus(event);
+  return status === "Non richiesta" ? "" : `Prenotazione ${status.toLowerCase()}`;
+}
+
+function EventCostBadge({ event }) {
+  const cost = eventCostInfo(event);
+  const reservationText = eventReservationText(event);
+  if (!cost && !reservationText) return null;
+  return (
+    <div className="event-cost-badges">
+      {cost && (
+        <div className={`event-cost-badge event-cost--${cost.type}`}>
+          <strong>{cost.title}</strong>
+          {cost.price && <span>{cost.price}</span>}
+        </div>
+      )}
+      {reservationText && (
+        <div className="event-cost-badge event-cost--reservation">
+          <strong>
+            {reservationText === "Prenotazione obbligatoria"
+              ? "🟡 Prenotazione obbligatoria"
+              : "🟡 Prenotazione consigliata"}
+          </strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function matchesQuickKeyword(searchableText, keyword) {
   const chip = [...EVENT_IDEA_CHIPS, ...SEASONAL_EVENT_CHIPS]
     .find((item) => item.value === keyword);
@@ -465,6 +661,35 @@ function eventDateRange(event) {
   return end < start ? { start, end: start } : { start, end };
 }
 
+function eventEndDateTime(event) {
+  const start = localEventDate(event.starts_on);
+  if (!start) return null;
+
+  const end = localEventDate(event.ends_on) || start;
+  const normalizedEnd = end < start ? start : end;
+  const hasEndTime = isUsableEventText(event.ends_on) &&
+    typeof event.ends_on === "string" &&
+    /T\d{2}:\d{2}/.test(event.ends_on);
+
+  if (hasEndTime && end >= start) {
+    const parsedEnd = new Date(event.ends_on);
+    const parsedStart = new Date(event.starts_on);
+    if (
+      !Number.isNaN(parsedEnd.getTime()) &&
+      !Number.isNaN(parsedStart.getTime()) &&
+      parsedEnd >= parsedStart &&
+      (parsedEnd.getHours() !== 0 ||
+        parsedEnd.getMinutes() !== 0 ||
+        parsedEnd.getSeconds() !== 0 ||
+        parsedEnd.getMilliseconds() !== 0)
+    ) {
+      return parsedEnd;
+    }
+  }
+
+  return addLocalDays(normalizedEnd, 1);
+}
+
 function dateRangeIntersects(event, start, end = start) {
   const range = eventDateRange(event);
   return Boolean(range && range.start <= end && range.end >= start);
@@ -512,6 +737,7 @@ function HomeApp() {
 
   useEffect(() => {
     let timeoutId;
+    const minuteInterval = window.setInterval(() => setToday(new Date()), 60_000);
     const updateAtNextMidnight = () => {
       const now = new Date();
       const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -522,7 +748,10 @@ function HomeApp() {
     };
 
     updateAtNextMidnight();
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(minuteInterval);
+    };
   }, []);
 
   useEffect(() => {
@@ -562,24 +791,23 @@ function HomeApp() {
     play_center: providers.filter((item) => item.provider_kind === "play_center").length
   }), [providers]);
 
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const visibleEvents = events.filter((event) => {
-    const range = eventDateRange(event);
-    return !range || range.end >= todayStart;
+  const filteredVisibleEvents = events.filter((event) => {
+    const endsAt = eventEndDateTime(event);
+    return !endsAt || endsAt > today;
   });
 
   const counts = {
     parks: parks.filter((park) =>
       park.outside_tuscany !== true && isTargetProvince(park.provincia, park.comune)
     ).length,
-    events: visibleEvents.length,
+    events: filteredVisibleEvents.length,
     ...providerCounts
   };
 
   const currentItems = active === "parks"
     ? parks
     : active === "events"
-      ? visibleEvents
+      ? filteredVisibleEvents
       : providers.filter((item) => active === "feste"
         ? isPartyProvider(item)
         : canonicalProviderCategory(item.provider_kind) === active);
@@ -912,7 +1140,9 @@ function HomeApp() {
           </div>
         )}
         {selectedEvent && (
+          (!eventEndDateTime(selectedEvent) || eventEndDateTime(selectedEvent) > today) && (
           <EventDetails event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+          )
         )}
       </main>
 
@@ -927,8 +1157,6 @@ function HomeApp() {
 
 function Card({ item, active, onShowEventDetails }) {
   if (active === "events") {
-    const directions = eventDirectionsUrl(item);
-    const eventLocation = [item.city, item.location].filter(isUsableEventText).join(" · ");
     const ageColors = getEventAgeColors(item.age_range);
 
     return (
@@ -941,12 +1169,17 @@ function Card({ item, active, onShowEventDetails }) {
           {isUsableEventText(item.starts_on) && (
             <p className="date">📅 {formatEventDateTime(item.starts_on)}</p>
           )}
-          {eventLocation && <p className="location">📍 {eventLocation}</p>}
+          {isUsableEventText(item.location) || isUsableEventText(item.city) ? (
+            <p className="location">
+              📍 {[item.location, item.city]
+                .filter(isUsableEventText)
+                .filter((value, index, values) => values.indexOf(value) === index)
+                .join(" · ")}
+            </p>
+          ) : null}
+          <EventCostBadge event={item} />
           <div className="card-actions event-card-actions">
             <button type="button" onClick={onShowEventDetails}>ℹ️ Tutte le info</button>
-            {directions && (
-              <a href={directions} target="_blank" rel="noreferrer">🚗 Portami qui</a>
-            )}
           </div>
         </div>
       </article>
@@ -986,35 +1219,91 @@ function EventDetails({ event, onClose }) {
     };
   }, [onClose]);
 
-  const schedule = [...new Set([event.starts_on, event.ends_on]
-    .filter(isUsableEventText)
-    .map(formatEventDateTime)
-    .filter(Boolean))]
-    .join(" – ");
-  const location = [...new Set([event.city, event.location].filter(isUsableEventText))]
-    .join(" · ");
-  const ageRange = formatEventAgeRange(event.age_range);
-  const cost = isUsableEventText(event.cost) &&
-    normalizeEventText(event.cost) !== "non pubblicato"
-    ? event.cost.trim()
+  const startDate = localEventDate(event.starts_on);
+  const endDate = localEventDate(event.ends_on);
+  const date = startDate
+    ? `${formatEventDateOnly(startDate)}${endDate && endDate > startDate ? ` – ${formatEventDateOnly(endDate)}` : ""}`
     : "";
-  const officialUrl = getHttpUrl(event.source_url);
+  const startTime = formatEventTime(event.starts_on);
+  const endTime = formatEventTime(event.ends_on);
+  const time = [...new Set([startTime, endTime].filter(Boolean))].join(" – ");
+  const location = [event.location, event.city].filter(isUsableEventText).join(" · ");
+  const address = isUsableEventText(event.address) ? event.address.trim() : "";
+  const streetNumber = [
+    event.street_number,
+    event.civic_number,
+    event.house_number
+  ].find(isUsableEventText)?.trim() ||
+    address.split(",")[0].match(/(?:^|\s)(\d+[a-zA-Z]?(?:\/[0-9a-zA-Z]+)?)$/)?.[1] ||
+    "";
+  const directions = eventDirectionsUrl(event);
+  const ageRange = formatEventAgeRange(event.age_range);
+  const cost = eventCostInfo(event);
+  const reservationStatus = eventReservationStatus(event);
+  const officialUrl = getHttpUrl(event.official_url) || getHttpUrl(event.source_url);
+  const organizer = isUsableEventText(event.organizer) ? event.organizer.trim() : "";
+  const actionItems = eventActionItems(event);
+  const addressStreet = address.split(",")[0].trim();
+  const normalizedAddressStreet = streetNumber && !new RegExp(`(?:^|\\s)${streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(addressStreet)
+    ? `${addressStreet} ${streetNumber}`
+    : addressStreet;
+  const addressLines = [
+    normalizedAddressStreet,
+    isUsableEventText(event.postal_code) ? event.postal_code.trim() : "",
+    isUsableEventText(event.city) ? event.city.trim() : ""
+  ].filter(Boolean);
+  const highlightedActions = [
+    directions && {
+      label: "📍 Portami qui",
+      href: directions,
+      className: "event-booking-button--phone",
+      external: true
+    },
+    officialUrl && {
+      label: "🌐 Apri sito",
+      href: officialUrl,
+      className: "event-booking-button--website",
+      external: true
+    }
+  ].filter(Boolean);
+  const highlightedHrefs = new Set(highlightedActions.map((action) => action.href));
+  const bookingActionTypes = new Set([
+    "event-booking-button--phone",
+    "event-booking-button--whatsapp",
+    "event-booking-button--email",
+    "event-booking-button--online"
+  ]);
+  const seenActionHrefs = new Set(highlightedHrefs);
+  const bookingActions = actionItems.filter((action) => {
+    if (!bookingActionTypes.has(action.className) || seenActionHrefs.has(action.href)) {
+      return false;
+    }
+    seenActionHrefs.add(action.href);
+    return true;
+  });
   const details = [
-    { label: "📅 Quando", value: schedule },
-    { label: "📍 Dove", value: location },
-    { label: "👶 Età consigliata", value: ageRange },
-    { label: "💶 Costo", value: cost }
-  ].filter(({ value }) => isUsableEventText(value));
-  if (officialUrl) {
-    details.push({
-      label: "🔗 Pagina ufficiale",
-      value: (
-        <a href={officialUrl} target="_blank" rel="noopener noreferrer">
-          Apri la pagina ufficiale
-        </a>
-      )
-    });
-  }
+    { label: "📅 Data", value: date },
+    { label: "⏰ Orario", value: time },
+    { label: "📍 Luogo", value: location },
+    addressLines.length > 0 && {
+      label: "📍 Indirizzo",
+      value: <div className="event-address-lines">{addressLines.map((line) => <span key={line}>{line}</span>)}</div>
+    },
+    cost && {
+      label: "💰 Costo",
+      value: <EventCostBadge event={event} />
+    },
+    {
+      label: "🎟️ Prenotazione",
+      value: reservationStatus
+    },
+    bookingActions.length > 0 && {
+      label: "🎟️ Come prenotare",
+      value: <EventDirectActions actions={bookingActions} />
+    },
+    organizer && { label: "👤 Organizzatore", value: organizer },
+    ageRange && { label: "👶 Età consigliata", value: ageRange }
+  ].filter(Boolean);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -1033,22 +1322,40 @@ function EventDetails({ event, onClose }) {
             <h2 id="event-details-title">{event.title}</h2>
           </div>
         </div>
+        {highlightedActions.length > 0 && (
+          <div className="event-highlighted-actions" aria-label="Azioni rapide evento">
+            {highlightedActions.map((action) => (
+              <a
+                className={`event-booking-button ${action.className}`}
+                href={action.href}
+                key={action.label}
+                target={action.external ? "_blank" : undefined}
+                rel={action.external ? "noopener noreferrer" : undefined}
+              >
+                {action.label}
+              </a>
+            ))}
+          </div>
+        )}
         <div className="event-details-content">
-          {isUsableEventText(event.description) && (
-            <section className="event-detail-description">
-              <h3>Descrizione</h3>
-              <p>{event.description}</p>
-            </section>
-          )}
           {details.length > 0 && (
             <div className="details-grid event-details-grid">
               {details.map(({ label, value }) => (
-                <div className="detail-item" key={label}>
+                <div
+                  className={`detail-item${label === "💰 Costo" ? " event-cost-detail" : ""}${label === "🎟️ Come prenotare" ? " event-booking-detail" : ""}`}
+                  key={label}
+                >
                   <strong>{label}</strong>
                   <span>{value}</span>
                 </div>
               ))}
             </div>
+          )}
+          {isUsableEventText(event.description) && (
+            <section className="event-detail-description">
+              <h3>Descrizione</h3>
+              <p>{event.description}</p>
+            </section>
           )}
         </div>
         <div className="modal-actions">
@@ -1092,13 +1399,48 @@ function eventDirectionsUrl(event) {
     latitude <= 90 &&
     longitude >= -180 &&
     longitude <= 180;
-  const destination = hasCoordinates
-    ? `${latitude},${longitude}`
-    : [event.address, event.city].filter(isUsableEventText).join(", ");
+  if (hasCoordinates) {
+    return `https://www.google.com/maps?q=${latitude},${longitude}`;
+  }
 
-  return destination
-    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`
+  const streetAddress = event.address || event.street_address || event.location;
+  const addressParts = String(streetAddress || "").split(",");
+  const streetName = addressParts[0].trim();
+  const streetNumber = isUsableEventText(event.street_number)
+    ? event.street_number.trim()
     : "";
+  const addressWithNumber = streetAddress && streetNumber &&
+    !/(?:^|\s)\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)?$/.test(streetName)
+    ? [`${streetName} ${streetNumber}`, ...addressParts.slice(1).map((part) => part.trim())].join(", ")
+    : streetAddress;
+  const destination = [
+    addressWithNumber,
+    event.postal_code,
+    event.city
+  ]
+    .filter(isUsableEventText)
+    .join(", ");
+  return destination
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`
+    : "";
+}
+
+function formatEventDateOnly(date) {
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  }).format(date);
+}
+
+function formatEventTime(value) {
+  if (!isUsableEventText(value) || !/T\d{2}:\d{2}/.test(value)) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function formatEventDateTime(value) {
