@@ -1,7 +1,7 @@
 -- Recensioni pubbliche dei provider (Animatori ora; Sale Feste e attività future in seguito).
 CREATE TABLE public.provider_reviews (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  provider_id uuid NOT NULL REFERENCES public.providers(id) ON DELETE CASCADE,
+  provider_id text NOT NULL REFERENCES public.providers(id) ON DELETE CASCADE,
   rating smallint NOT NULL CHECK (rating BETWEEN 1 AND 5),
   comment text CHECK (comment IS NULL OR char_length(btrim(comment)) BETWEEN 1 AND 500),
   status text NOT NULL DEFAULT 'approved'
