@@ -128,6 +128,7 @@ export function extractPalazzoLeggendaEvents(
 
     let title = "";
     let titleIndex = index;
+    let bookingRecommended = false;
 
     for (
       let nextIndex = index + 1;
@@ -173,6 +174,9 @@ export function extractPalazzoLeggendaEvents(
           candidate
         )
       ) {
+        if (/^prenotazione consigliata$/i.test(candidate)) {
+          bookingRecommended = true;
+        }
         continue;
       }
 
@@ -227,6 +231,10 @@ export function extractPalazzoLeggendaEvents(
           "-" +
           Number(monthsMatch[2]) +
           " mesi";
+      }
+
+      if (/^prenotazione consigliata$/i.test(value)) {
+        bookingRecommended = true;
       }
 
       if (
@@ -289,7 +297,9 @@ export function extractPalazzoLeggendaEvents(
         "Via Luigi Paladini, Empoli",
       source_name: source.name,
       age_range: ageRange,
-      family_super: true
+      family_super: true,
+      booking_required: bookingRecommended ? false : null,
+      booking_notes: bookingRecommended ? "Prenotazione consigliata" : null
     };
 
     event.import_key =

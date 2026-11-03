@@ -1,0 +1,37 @@
+name: Discover Animatori
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+
+jobs:
+  discover:
+    name: Cerca nuovi animatori (solo candidati)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Esegui discovery
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+        run: node scripts/discover-animators.mjs
+
+      - name: Pubblica report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: animators-report
+          path: animators-report.md
+          if-no-files-found: ignore

@@ -630,7 +630,12 @@ function extractPageEnrichment(html, pageUrl) {
   };
 }
 
-function mergePageEnrichment(event, enrichment, pageUrl) {
+function mergePageEnrichment(event, rawEnrichment, pageUrl, { sharedPage = false } = {}) {
+  // A page listing several events describes none of them in particular:
+  // its booking text must not be copied onto each event.
+  const enrichment = sharedPage
+    ? { ...rawEnrichment, booking_required: null, booking_notes: null }
+    : rawEnrichment;
   const parsedEventAddress = locationData(event.address);
   const streetAddress = event.street_address ||
     enrichment.street_address ||
@@ -667,11 +672,12 @@ function mergePageEnrichment(event, enrichment, pageUrl) {
   };
 }
 
-function enrichEventFromPage(event, html, pageUrl) {
+function enrichEventFromPage(event, html, pageUrl, options) {
   return mergePageEnrichment(
     event,
     extractPageEnrichment(html, pageUrl),
-    pageUrl
+    pageUrl,
+    options
   );
 }
 
@@ -3891,7 +3897,9 @@ async function collectSourceEvents(source) {
       if (event) {
         byKey.set(
           event.import_key,
-          enrichEventFromPage(event, page.html, page.url)
+          enrichEventFromPage(event, page.html, page.url, {
+            sharedPage: jsonLdNodes.length > 1
+          })
         );
       }
     }
@@ -4879,6 +4887,12 @@ async function main() {
       found += events.length;
       console.log(`  Events collected: ${events.length}`);
 
+      const eventsPerPage = new Map();
+      for (const item of events) {
+        const pageUrl = absoluteHttpUrl(item.official_url || item.source_url, source.url);
+        if (pageUrl) eventsPerPage.set(pageUrl, (eventsPerPage.get(pageUrl) || 0) + 1);
+      }
+
       for (const event of events) {
         if (isExpiredEvent(event)) {
           console.log(`  SKIP EXPIRED: ${event.title}`);
@@ -4903,7 +4917,9 @@ async function main() {
             }
             Object.assign(
               event,
-              mergePageEnrichment(event, pageEnrichment, eventPageUrl)
+              mergePageEnrichment(event, pageEnrichment, eventPageUrl, {
+                sharedPage: eventsPerPage.get(eventPageUrl) > 1
+              })
             );
           } catch (enrichmentError) {
             console.warn(
