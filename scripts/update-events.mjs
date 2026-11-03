@@ -6,6 +6,7 @@ import { collectTeatroDanteEvents } from "./teatrodante-parser.mjs";
 import { collectBibliotecheFirenzeEvents } from "./biblioteche-firenze-parser.mjs";
 import { collectMuseoGalileoEvents } from "./museo-galileo-parser.mjs";
 import { extractPalazzoLeggendaEvents } from "./palazzo-leggenda-parser.mjs";
+import { classifyBookingText } from "./event-booking-classifier.mjs";
 import crypto from "node:crypto";
 
 const WRITE = process.argv.includes("--write");
@@ -560,17 +561,24 @@ function extractPageEnrichment(html, pageUrl) {
     /^(?:true|required|obbligator\w*|richiest\w*)$/i.test(String(bookingMetadata || "").trim());
   const metadataDoesNotRequireBooking = bookingMetadata === false ||
     /^(?:false|optional|not required|non obbligator\w*|non richiest\w*)$/i.test(String(bookingMetadata || "").trim());
-  const reservationRequired = metadataRequiresBooking ||
-    /prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|prenotare\s+(?:è\s+)?obbligator\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*/i.test(contentText);
-  const reservationRecommended = /prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*/i.test(contentText);
-  const reservationNotRequired = /(?:prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|non\s+(?:è\s+)?necessari\w*\s+prenotazion\w*|senza\s+prenotazion\w*)/i.test(contentText);
-  const bookingNotes = reservationRequired
-    ? firstText(contentText.match(/.{0,70}(?:prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*).{0,100}/i)?.[0])
-    : reservationRecommended
-      ? firstText(contentText.match(/.{0,70}(?:prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*).{0,100}/i)?.[0])
-      : reservationNotRequired
-        ? firstText(contentText.match(/.{0,70}(?:prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|senza\s+prenotazion\w*).{0,100}/i)?.[0])
-        : null;
+  const bookingClassification = classifyBookingText(contentText);
+  const metadataBookingRequired = metadataRequiresBooking
+    ? true
+    : metadataDoesNotRequireBooking
+      ? false
+      : null;
+  const bookingEvidenceConflicts = metadataBookingRequired !== null &&
+    bookingClassification.booking_required !== null &&
+    metadataBookingRequired !== bookingClassification.booking_required;
+  const bookingRequired = bookingEvidenceConflicts
+    ? null
+    : bookingClassification.booking_required ?? metadataBookingRequired;
+  const bookingNotes = bookingClassification.booking_notes ||
+    (metadataBookingRequired === true
+      ? "La pagina indica che la prenotazione è obbligatoria."
+      : metadataBookingRequired === false
+        ? "La pagina indica che la prenotazione non è obbligatoria."
+        : null);
 
   return {
     organizer: entityName(organizer) ||
@@ -602,11 +610,7 @@ function extractPageEnrichment(html, pageUrl) {
     )),
     booking_url: (offerUrl && absoluteHttpUrl(offerUrl, pageUrl)) ||
       absoluteHttpUrl(bookingUrl, pageUrl),
-    booking_required: reservationRequired
-      ? true
-      : metadataDoesNotRequireBooking || reservationRecommended || reservationNotRequired
-        ? false
-        : null,
+    booking_required: bookingRequired,
     booking_notes: bookingNotes || (bookingUrl ? "Prenotazione online disponibile" : null),
     official_url: [
       eventNode.url,
@@ -643,7 +647,10 @@ function mergePageEnrichment(event, enrichment, pageUrl) {
     email: validEmail(event.email) || enrichment.email,
     booking_url: absoluteHttpUrl(event.booking_url, pageUrl) || enrichment.booking_url,
     booking_required: event.booking_required ?? enrichment.booking_required,
-    booking_notes: event.booking_notes || enrichment.booking_notes,
+    booking_notes: !event.booking_notes ||
+      /^prenotazione online disponibile$/i.test(event.booking_notes.trim())
+      ? enrichment.booking_notes || event.booking_notes
+      : event.booking_notes,
     official_url: [
       event.official_url,
       enrichment.official_url,
@@ -4878,8 +4885,14 @@ async function main() {
           continue;
         }
 
-        const eventPageUrl = absoluteHttpUrl(event.source_url, source.url);
-        if (eventPageUrl && !event._page_enriched) {
+        const eventPageUrl = absoluteHttpUrl(
+          event.official_url || event.source_url,
+          source.url
+        );
+        const sourcePageUrl = absoluteHttpUrl(event.source_url, source.url);
+        const eventPageAlreadyEnriched = event._page_enriched &&
+          eventPageUrl === sourcePageUrl;
+        if (eventPageUrl && !eventPageAlreadyEnriched) {
           try {
             let pageEnrichment = pageEnrichmentCache.get(eventPageUrl);
             if (!pageEnrichment) {

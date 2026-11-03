@@ -2,9 +2,13 @@ function asText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function withoutCitySuffix(address, city) {
   if (!address || !city) return address;
-  const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedCity = escapeRegExp(city);
   return address.replace(new RegExp(`[,\\s]+${escapedCity}\\s*$`, "i"), "").trim();
 }
 
@@ -20,6 +24,16 @@ function withoutLocationParts(address, city, province) {
   return withoutCitySuffix(street, city);
 }
 
+function addressFromNotes(notes) {
+  const streetPattern = "(?:via|viale|piazza|piazzale|corso|lungarno|strada|vicolo|borgo|localita|frazione)\\s+[^\\n.;]+";
+  const labeledAddress = new RegExp(
+    `(?:\\bsede(?:\\s+(?:pubblicata|legale))?\\s*:?\\s*|\\b[\\p{L}\\d'’ -]{1,40}\\bpoint\\s*:\\s*)(${streetPattern})`,
+    "iu"
+  );
+  const match = notes.match(labeledAddress) ?? notes.match(new RegExp(`\\b(${streetPattern})`, "iu"));
+  return match?.[1]?.trim().replace(/[,.]+$/, "") ?? "";
+}
+
 export function providerStreetAddress(provider) {
   const city = asText(provider?.city);
   const province = asText(provider?.province);
@@ -27,10 +41,29 @@ export function providerStreetAddress(provider) {
   if (address) return withoutLocationParts(address, city, province);
 
   const notes = asText(provider?.notes);
-  const match = notes.match(/(?:^|\n)\s*Sede(?: pubblicata)?\s*:\s*([^\n]+)/i);
-  if (!match) return "";
+  const noteAddress = addressFromNotes(notes);
+  return withoutLocationParts(noteAddress, city, province);
+}
 
-  return withoutLocationParts(match[1].trim().replace(/[.;]+$/, ""), city, province);
+export function providerNotesWithoutAddress(provider) {
+  const notes = asText(provider?.notes);
+  const address = providerStreetAddress(provider);
+  if (!notes || !address) return notes;
+
+  const locationLabel = "(?:sede(?:\\s+(?:pubblicata|legale))?\\s*:?\\s*|[\\p{L}\\d'’ -]{1,40}\\bpoint\\s*:\\s*)";
+  const city = asText(provider?.city);
+  const citySuffix = city ? `(?:,\\s*${escapeRegExp(city)})?` : "";
+  const addressMention = new RegExp(
+    `(?:\\s*(?:[;,]\\s*)?)(?:${locationLabel})?${escapeRegExp(address)}${citySuffix}[.;]?`,
+    "iu"
+  );
+  return notes
+    .replace(addressMention, " ")
+    .replace(/\s+([,;.])/g, "$1")
+    .replace(/[;,]\s*[;,]\s*/g, "; ")
+    .trim()
+    .replace(/^[,;:.]+|[,;:.]+$/g, "")
+    .trim();
 }
 
 export function providerFullAddress(provider) {

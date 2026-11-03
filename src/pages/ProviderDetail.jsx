@@ -4,7 +4,12 @@ import {
   getProviderCategories,
   providerCategoryName
 } from "../lib/providerCategories.js";
-import { providerDirectionsUrl, providerFullAddress } from "../lib/providerLocation.js";
+import {
+  providerDirectionsUrl,
+  providerFullAddress,
+  providerNotesWithoutAddress
+} from "../lib/providerLocation.js";
+import { providerServiceTags } from "../lib/providerServiceTags.js";
 
 function asText(value) {
   if (value == null) return "";
@@ -104,19 +109,24 @@ export default function ProviderDetail({ providerId }) {
   }, [providerId]);
 
   const phone = asText(provider?.phone);
-  const whatsappValue = asText(provider?.whatsapp || phone);
+  const phoneNumbers = phone.split(/[;,\n]|\s+\boppure\b\s+/i).map((value) => value.trim()).filter(Boolean);
+  const whatsappValue = asText(provider?.whatsapp || phoneNumbers[0]);
   const whatsapp = whatsappHref(whatsappValue);
-  const telephone = phoneHref(phone);
+  const telephones = phoneNumbers.map(phoneHref).filter(Boolean);
   const websiteValue = asText(provider?.website);
   const website = websiteHref(websiteValue);
   const description = asText(provider?.description);
-  const notes = asText(provider?.notes);
+  const notes = providerNotesWithoutAddress(provider);
   const services = asText(provider?.services);
+  const serviceTags = providerServiceTags(provider?.services);
   const email = asText(provider?.email);
   const emailHref = email ? `mailto:${email}` : "";
   const directions = providerDirectionsUrl(provider);
   const fullAddress = providerFullAddress(provider);
-  const socialLinks = [...new Set([provider?.social_url, provider?.facebook, provider?.instagram])]
+  const socialLinks = [...new Set([provider?.social_url, provider?.facebook, provider?.instagram]
+    .flatMap((value) => asText(value).split(/[;,]/))
+    .map((value) => value.trim())
+    .filter(Boolean))]
     .map((value) => {
       const href = websiteHref(value);
       if (!href) return null;
@@ -142,7 +152,7 @@ export default function ProviderDetail({ providerId }) {
     .map(providerCategoryName)
     .join(" · ");
   const contactActions = [
-    telephone && { label: "Chiama", href: telephone, className: "call", icon: "📞" },
+    ...telephones.map((href) => ({ label: "Chiama", href, className: "call", icon: "📞" })),
     whatsapp && { label: "WhatsApp", href: whatsapp, className: "whatsapp", icon: <WhatsAppIcon /> },
     emailHref && { label: "Email", href: emailHref, className: "email", icon: "📧" },
     website && { label: "Sito", href: website, className: "website", icon: "🌐", external: true },
@@ -176,7 +186,7 @@ export default function ProviderDetail({ providerId }) {
                   <a
                     className={`provider-cta ${className}`}
                     href={href}
-                    key={label}
+                    key={`${className}-${href}`}
                     target={external || className === "whatsapp" ? "_blank" : undefined}
                     rel={external || className === "whatsapp" ? "noopener noreferrer" : undefined}
                   >
@@ -207,6 +217,15 @@ export default function ProviderDetail({ providerId }) {
             {services && (
               <section className="provider-detail-section" aria-labelledby="provider-services-title">
                 <h2 id="provider-services-title">Servizi</h2>
+                {serviceTags.length > 0 && (
+                  <ul className="provider-service-tags" aria-label="Categorie di servizio">
+                    {serviceTags.map(({ id, label }) => (
+                      <li className={`provider-service-tag provider-service-tag-${id}`} key={id}>
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <p className="provider-detail-long-text">{services}</p>
               </section>
             )}

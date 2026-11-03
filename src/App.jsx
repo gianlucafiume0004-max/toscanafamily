@@ -434,10 +434,19 @@ function eventEmail(event) {
 function eventActionItems(event) {
   const { phoneLink, whatsappUrl } = eventPhoneData(event);
   const email = eventEmail(event);
-  const officialUrl = getHttpUrl(event.website_url) ||
-    getHttpUrl(event.official_url) ||
-    getHttpUrl(event.source_url);
-  const bookingUrl = getHttpUrl(event.booking_url);
+  const officialUrl = getHttpUrl(event.official_url);
+  const sourceUrl = getHttpUrl(event.source_url);
+  const organizerUrl = getHttpUrl(event.website_url) ||
+    [officialUrl, sourceUrl].find(isHomePageUrl) ||
+    "";
+  const eventPageUrl = [officialUrl, sourceUrl].find((url) => url && !isHomePageUrl(url)) || "";
+  const mappedBookingUrl = getMappedEventBookingUrl(eventPageUrl);
+  const bookingUrl = mappedBookingUrl ||
+    (isEventBookingUrl(event.booking_url) ? getHttpUrl(event.booking_url) : "");
+  const fallbackPageUrl = !eventPageUrl &&
+    isGenericEventPageUrl(event.booking_url)
+    ? getHttpUrl(event.booking_url)
+    : "";
   return [
     phoneLink && {
       label: "📞 Chiama",
@@ -445,29 +454,64 @@ function eventActionItems(event) {
       className: "event-booking-button--phone"
     },
     whatsappUrl && {
-      label: "💬 WhatsApp",
+      label: "🟢 WhatsApp",
       href: whatsappUrl,
       className: "event-booking-button--whatsapp",
       external: true
     },
     email && {
-      label: "✉️ Email",
+      label: "📧 Email",
       href: `mailto:${email}`,
       className: "event-booking-button--email"
     },
-    officialUrl && {
+    organizerUrl && {
       label: "🌐 Sito organizzatore",
-      href: officialUrl,
+      href: organizerUrl,
       className: "event-booking-button--website",
       external: true
     },
+    eventPageUrl && eventPageUrl !== organizerUrl && {
+      label: "🌐 Pagina evento",
+      href: eventPageUrl,
+      className: "event-booking-button--event-page",
+      external: true
+    },
+    fallbackPageUrl && fallbackPageUrl !== eventPageUrl && fallbackPageUrl !== organizerUrl && {
+      label: isHomePageUrl(fallbackPageUrl) ? "🌐 Sito organizzatore" : "🌐 Pagina evento",
+      href: fallbackPageUrl,
+      className: isHomePageUrl(fallbackPageUrl)
+        ? "event-booking-button--website"
+        : "event-booking-button--event-page",
+      external: true
+    },
     bookingUrl && {
-      label: "🎟️ Prenota online",
+      label: "🎟️ Prenota ora",
       href: bookingUrl,
       className: "event-booking-button--online",
       external: true
     }
   ].filter(Boolean);
+}
+
+function getMappedEventBookingUrl(eventPageUrl) {
+  const safeUrl = getHttpUrl(eventPageUrl);
+  if (!safeUrl) return "";
+
+  const url = new URL(safeUrl);
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+  const pathname = url.pathname.toLowerCase();
+
+  if (hostname === "museogalileo.it" &&
+    pathname.startsWith("/it/attivita/calendario/lista-attivita/")) {
+    return "https://biglietteria.museogalileo.it/prenota-visita-guidata.php?visita_guidata_id=1";
+  }
+
+  if (hostname === "tempolibero2.comune.prato.it" &&
+    pathname === "/event/81087590-d37b-11f1-b3ae-a92d549ee3df/appointment/14634480-d37d-11f1-85ea-5799608caed6") {
+    return "https://forms.gle/MPC2JCjwwJfkzDBQ6";
+  }
+
+  return "";
 }
 
 function EventDirectActions({ actions, className = "" }) {
@@ -1354,15 +1398,19 @@ function EventDetails({ event, onClose }) {
   const ageRange = formatEventAgeRange(event.age_range);
   const cost = eventCostInfo(event);
   const reservationStatus = eventReservationStatus(event);
-  const bookingUrl = getHttpUrl(event.booking_url);
   const bookingInstructions = eventBookingInstructions(event);
   const organizer = isUsableEventText(event.organizer) ? event.organizer.trim() : "";
   const actionItems = eventActionItems(event);
-  const canShowBookingDetails = reservationStatus !== "Non richiesta" &&
-    (reservationStatus === "Obbligatoria" ||
-      reservationStatus === "Consigliata" ||
-      Boolean(bookingUrl) ||
-      Boolean(bookingInstructions));
+  const canShowBookingDetails = reservationStatus === "Obbligatoria" ||
+    reservationStatus === "Consigliata" ||
+    Boolean(bookingInstructions) ||
+    actionItems.some((action) => [
+      "event-booking-button--phone",
+      "event-booking-button--whatsapp",
+      "event-booking-button--email",
+      "event-booking-button--event-page",
+      "event-booking-button--online"
+    ].includes(action.className));
   const addressStreet = streetNumber
     ? address.replace(new RegExp(`(?:\\s|,)${streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "").trim()
     : address;
@@ -1380,37 +1428,33 @@ function EventDetails({ event, onClose }) {
       className: "event-booking-button--phone",
       external: true
     },
-    ...actionItems.filter((action) => [
-      "event-booking-button--phone",
-      "event-booking-button--whatsapp",
-      "event-booking-button--email",
-      "event-booking-button--website"
-    ].includes(action.className))
+    ...actionItems.filter((action) => action.className === "event-booking-button--website" ||
+      (!canShowBookingDetails && [
+        "event-booking-button--phone",
+        "event-booking-button--whatsapp",
+        "event-booking-button--email"
+      ].includes(action.className)))
   ].filter(Boolean);
-  const highlightedHrefs = new Set(highlightedActions.map((action) => action.href));
   const bookingActionTypes = new Set([
     "event-booking-button--phone",
     "event-booking-button--whatsapp",
     "event-booking-button--email",
+    "event-booking-button--event-page",
     "event-booking-button--online"
   ]);
-  const seenActionHrefs = new Set(highlightedHrefs);
+  const seenBookingActionHrefs = new Set();
   const bookingActions = canShowBookingDetails
     ? actionItems.filter((action) => {
-      if (!bookingActionTypes.has(action.className) || seenActionHrefs.has(action.href)) {
+      if (!bookingActionTypes.has(action.className) || seenBookingActionHrefs.has(action.href)) {
         return false;
       }
-      seenActionHrefs.add(action.href);
+      seenBookingActionHrefs.add(action.href);
       return true;
     })
     : [];
-  const bookingContent = [
-    bookingInstructions && <p className="event-booking-instructions" key="instructions">{bookingInstructions}</p>,
-    bookingActions.length > 0 && <EventDirectActions actions={bookingActions} key="actions" />,
-    canShowBookingDetails && bookingActions.length === 0 && !bookingInstructions && (
-      <p className="event-booking-unavailable" key="unavailable">Contatti per la prenotazione non disponibili.</p>
-    )
-  ].filter(Boolean);
+  const bookingContent = bookingActions.length > 0
+    ? <EventDirectActions actions={bookingActions} />
+    : null;
   const details = [
     { label: "📅 Data", value: date },
     { label: "⏰ Orario", value: time },
@@ -1427,9 +1471,9 @@ function EventDetails({ event, onClose }) {
       label: "🎟️ Prenotazione",
       value: eventReservationText(event)
     },
-    canShowBookingDetails && bookingContent.length > 0 && {
+    canShowBookingDetails && {
       label: "🎟️ Come prenotare",
-      value: <div className="event-booking-content">{bookingContent}</div>
+      value: bookingContent && <div className="event-booking-content">{bookingContent}</div>
     },
     organizer && { label: "👤 Organizzatore", value: organizer },
     ageRange && { label: "Età consigliata", value: ageRange }
@@ -1476,7 +1520,7 @@ function EventDetails({ event, onClose }) {
                   key={label}
                 >
                   <strong>{label}</strong>
-                  <span>{value}</span>
+                  {value !== null && value !== undefined && <span>{value}</span>}
                 </div>
               ))}
             </div>
@@ -1540,6 +1584,56 @@ function getHttpUrl(value) {
   } catch {
     return "";
   }
+}
+
+function isEventBookingUrl(value) {
+  const safeUrl = getHttpUrl(value);
+  if (!safeUrl) return false;
+
+  const url = new URL(safeUrl);
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+  const pathname = url.pathname.toLowerCase();
+  const isMunicipalAppointmentUrl = /(?:^|\.)comune\.[a-z.]+$/.test(hostname) &&
+    /appuntament|appuntamento|appointment|prenota_appuntamento|prenotazione-appuntamenti|suggerimento-acquisti|\/it\/book/.test(pathname);
+  if (isMunicipalAppointmentUrl || hostname === "calendar.google.com") return false;
+
+  const trustedTicketingHost = [
+    "eventbrite.com",
+    "eventbrite.it",
+    "ticketone.it",
+    "vivaticket.com",
+    "coopculture.it",
+    "ticketmaster.com",
+    "ticketmaster.it"
+  ].some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+  if (trustedTicketingHost) {
+    const hasEventSpecificTicketPath =
+      /^\/e\/[^/]+/.test(pathname) ||
+      /\/(?:events?|eventi|tickets?|biglietti|prenota|booking|checkout|acquist\w*)\/[^/]+/.test(pathname);
+    return hasEventSpecificTicketPath;
+  }
+
+  if (hostname === "biglietteria.museogalileo.it") return true;
+  if (hostname === "teatrodante.it" && /^\/biglietti\/?$/.test(pathname)) return true;
+  if (hostname === "biblioteca.comune.sesto-fiorentino.fi.it" &&
+    /^\/prenotare-un-evento\/?$/.test(pathname)) return true;
+
+  return /\/(?:events?|eventi)\/[^/]+\/(?:tickets?|biglietti|checkout|booking|prenota)(?:\/|$)|\/(?:checkout|order|registration|iscrizione)\/[^/]+/i.test(pathname);
+}
+
+function isGenericEventPageUrl(value) {
+  const safeUrl = getHttpUrl(value);
+  if (!safeUrl) return false;
+  const url = new URL(safeUrl);
+  return url.hostname.toLowerCase() !== "calendar.google.com";
+}
+
+function isHomePageUrl(value) {
+  const safeUrl = getHttpUrl(value);
+  if (!safeUrl) return false;
+  const pathname = new URL(safeUrl).pathname.toLowerCase();
+  return /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/?)?$/.test(pathname) ||
+    /^\/(?:home(?:page)?|index(?:\.html?)?)\/?$/.test(pathname);
 }
 
 function eventDirectionsUrl(event) {

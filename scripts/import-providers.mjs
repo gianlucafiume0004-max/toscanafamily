@@ -51,6 +51,7 @@ const HEADERS = [
 
 const UPDATE_FIELDS = [
   "provider_kind",
+  "party_type",
   "name",
   "city",
   "services",
@@ -174,9 +175,12 @@ function normalizePhone(value) {
   const text = normalizeWhitespace(value);
   if (!text) return null;
 
-  const digits = text.replace(/\D/g, "");
-  if (!digits) throw new Error("numero di telefono non valido");
-  return `${text.trim().startsWith("+") ? "+" : ""}${digits}`;
+  const numbers = text.split(/\s*(?:;|,|\boppure\b)\s*/i).map((part) => {
+    const digits = part.replace(/\D/g, "");
+    if (!digits) throw new Error("numero di telefono non valido");
+    return `${part.trim().startsWith("+") ? "+" : ""}${digits}`;
+  });
+  return numbers.join("; ");
 }
 
 function normalizeUrl(value, field) {
@@ -252,6 +256,7 @@ function normalizeProvider(row) {
   return {
     name,
     provider_kind: PROVIDER_KIND_MAP.get(providerTypeKey),
+    party_type: providerTypeKey === "animator" ? "animatore" : null,
     city,
     province: normalizeText(row.province),
     services: normalizeArray(row.categories, "categories").join("; ") || null,
@@ -259,9 +264,10 @@ function normalizeProvider(row) {
     phone: normalizePhone(row.phone),
     email: normalizeEmail(row.email),
     website: normalizeUrl(row.website, "website"),
-    social_url:
-      normalizeUrl(row.facebook, "facebook") ??
-      normalizeUrl(row.instagram, "instagram"),
+    social_url: [
+      normalizeUrl(row.facebook, "facebook"),
+      normalizeUrl(row.instagram, "instagram")
+    ].filter(Boolean).join("; ") || null,
     notes: normalizeText(row.description),
     source_url: normalizeUrl(row.source_url, "source_url"),
     premium: parseBoolean(row.premium, "premium")

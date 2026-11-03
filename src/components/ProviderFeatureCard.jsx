@@ -1,7 +1,9 @@
 import { providerStreetAddress } from "../lib/providerLocation.js";
+import { providerServiceTags } from "../lib/providerServiceTags.js";
 
 export default function ProviderFeatureCard({ provider }) {
   const address = providerStreetAddress(provider);
+  const serviceTags = providerServiceTags(provider.services);
   const city = typeof provider.city === "string" ? provider.city.trim() : "";
   const description = typeof provider.description === "string"
     ? provider.description.trim()
@@ -16,6 +18,15 @@ export default function ProviderFeatureCard({ provider }) {
       <h2 className="provider-feature-title">{provider.name}</h2>
       {address && <p className="provider-feature-address">📍 {address}</p>}
       {city && <p className="provider-feature-location">📍 {city}</p>}
+      {serviceTags.length > 0 && (
+        <ul className="provider-service-tags" aria-label="Servizi principali">
+          {serviceTags.map(({ id, label }) => (
+            <li className={`provider-service-tag provider-service-tag-${id}`} key={id}>
+              {label}
+            </li>
+          ))}
+        </ul>
+      )}
       {description && <p className="provider-feature-description">{description}</p>}
       <div className="card-actions provider-feature-card-actions">
         <a
