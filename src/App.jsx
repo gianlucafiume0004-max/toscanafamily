@@ -3,50 +3,13 @@ import { supabase } from "./lib/supabase.js";
 import Activities from "./pages/Activities.jsx";
 import ProviderDetail from "./pages/ProviderDetail.jsx";
 import Parks, { isTargetProvince } from "./pages/Parks.jsx";
-import { canonicalProviderCategory } from "./lib/providerCategories.js";
-
-const PARTY_PROVIDER_TYPES = [
-  { value: "animatore", label: "Animatori" },
-  { value: "sala_feste", label: "Sale Feste / Eventi" }
-];
-
-const PARTY_KIND_ALIASES = new Map([
-  ["animator", "animator"],
-  ["animatore", "animator"],
-  ["animatori", "animator"],
-  ["venue", "venue"],
-  ["party_room", "venue"],
-  ["party_venue", "venue"],
-  ["sale_feste", "venue"],
-  ["sala_feste", "venue"],
-  ["animator_and_venue", "animator_and_venue"],
-  ["animator_party_room", "animator_and_venue"],
-  ["animator_and_party_room", "animator_and_venue"],
-  ["animation_party_room", "animator_and_venue"],
-  ["animazione_sala", "animator_and_venue"]
-]);
-
-function partyProviderKind(provider) {
-  const kind = typeof provider.provider_kind === "string"
-    ? provider.provider_kind.trim().toLocaleLowerCase("it-IT").replace(/[\s-]+/g, "_")
-    : "";
-  return PARTY_KIND_ALIASES.get(kind) ?? "";
-}
-
-function normalizedPartyType(provider) {
-  return typeof provider.party_type === "string"
-    ? provider.party_type.trim().toLocaleLowerCase("it-IT")
-    : "";
-}
-
-function isPartyProvider(provider) {
-  return canonicalProviderCategory(provider.provider_kind) === "feste" || Boolean(partyProviderKind(provider));
-}
+import { getProviderCategories } from "./lib/providerCategories.js";
 
 const TABS = [
   { key: "parks", label: "Parchi", icon: "🌳" },
   { key: "events", label: "Eventi", icon: "🎉" },
-  { key: "feste", label: "Feste", icon: "🎉" },
+  { key: "animatori", label: "Animatori", icon: "🎈" },
+  { key: "sale_feste", label: "Sale Feste", icon: "🏠" },
   { key: "play_center", label: "Ludoteche", icon: "🧸" }
 ];
 
@@ -736,6 +699,38 @@ function normalizeEventText(value) {
     .toLocaleLowerCase("it-IT");
 }
 
+function decodeHtmlEntities(value) {
+  if (typeof value !== "string" || !value.includes("&")) return value;
+  const decoder = document.createElement("textarea");
+  let decoded = value;
+  for (let pass = 0; pass < 3; pass += 1) {
+    decoder.innerHTML = decoded;
+    const next = decoder.value.replace(/\u00a0/g, " ");
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
+function decodeEventHtmlEntities(event) {
+  const textFields = new Set([
+    "title",
+    "description",
+    "location",
+    "address",
+    "street_address",
+    "city",
+    "organizer",
+    "booking_notes"
+  ]);
+  return Object.fromEntries(
+    Object.entries(event).map(([key, value]) => [
+      key,
+      textFields.has(key) ? decodeHtmlEntities(value) : value
+    ])
+  );
+}
+
 function localEventDate(value) {
   if (!isUsableEventText(value)) return null;
   const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -819,7 +814,6 @@ function HomeApp() {
   const [events, setEvents] = useState([]);
   const [providers, setProviders] = useState([]);
   const [city, setCity] = useState("");
-  const [providerType, setProviderType] = useState("");
   const [eventAge, setEventAge] = useState("");
   const [eventWhen, setEventWhen] = useState("all");
   const [eventDate, setEventDate] = useState("");
@@ -872,7 +866,7 @@ function HomeApp() {
 
       setErrors(nextErrors);
       setParks(parksResult.data ?? []);
-      setEvents(eventsResult.data ?? []);
+      setEvents((eventsResult.data ?? []).map(decodeEventHtmlEntities));
       setProviders(providersResult.data ?? []);
       setLoading(false);
     }
@@ -882,7 +876,8 @@ function HomeApp() {
   }, []);
 
   const providerCounts = useMemo(() => ({
-    feste: providers.filter(isPartyProvider).length,
+    animatori: providers.filter((item) => getProviderCategories(item).includes("animatori")).length,
+    sale_feste: providers.filter((item) => getProviderCategories(item).includes("sale_feste")).length,
     play_center: providers.filter((item) => item.provider_kind === "play_center").length
   }), [providers]);
 
@@ -903,9 +898,7 @@ function HomeApp() {
     ? parks
     : active === "events"
       ? filteredVisibleEvents
-      : providers.filter((item) => active === "feste"
-        ? isPartyProvider(item)
-        : canonicalProviderCategory(item.provider_kind) === active);
+      : providers.filter((item) => getProviderCategories(item).includes(active));
 
   const cities = useMemo(() => {
     const values = currentItems
@@ -920,9 +913,6 @@ function HomeApp() {
   const filteredWithoutQuickChip = currentItems.filter((item) => {
     const itemCity = active === "parks" ? item.comune : item.city;
     if (city && itemCity !== city) return false;
-    if (active === "feste") {
-      if (providerType && normalizedPartyType(item) !== providerType) return false;
-    }
     if (active !== "events") return true;
     if (selectedEventDateRange &&
       !dateRangeIntersects(item, selectedEventDateRange[0], selectedEventDateRange[1])) return false;
@@ -1005,7 +995,6 @@ function HomeApp() {
   function changeTab(key) {
     setActive(key);
     setCity("");
-    setProviderType("");
     setEventAge("");
     setEventWhen("all");
     setEventDate("");
@@ -1051,22 +1040,13 @@ function HomeApp() {
       <main>
         {active === "parks" ? (
           null
-        ) : active === "feste" ? (
-          <section className="activities-filters" aria-label="Filtri feste">
+        ) : active === "animatori" || active === "sale_feste" ? (
+          <section className="activities-filters" aria-label={`Filtri ${active === "animatori" ? "animatori" : "sale feste"}`}>
             <label>
               <span>Comune</span>
               <select value={city} onChange={(event) => setCity(event.target.value)}>
                 <option value="">Tutti i comuni</option>
                 {cities.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Categoria</span>
-              <select value={providerType} onChange={(event) => setProviderType(event.target.value)}>
-                <option value="">Tutti</option>
-                {PARTY_PROVIDER_TYPES.map(({ value, label }) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
               </select>
             </label>
           </section>
@@ -1247,7 +1227,7 @@ function HomeApp() {
           <div className="message empty">
             {active === "events"
               ? "Nessun evento corrisponde ai filtri selezionati."
-              : active === "feste"
+              : active === "animatori" || active === "sale_feste"
                 ? "Nessun provider corrisponde ai filtri selezionati. Prova a modificarli."
                 : "Nessun risultato per il comune selezionato. Prova un altro comune."}
           </div>
@@ -1299,7 +1279,7 @@ function Card({ item, active, onShowEventDetails }) {
     );
   }
 
-  const icon = active === "feste" ? "🎉" : "🧸";
+  const icon = active === "animatori" ? "🎈" : active === "sale_feste" ? "🏠" : "🧸";
   return (
     <article className="content-card provider-card">
       <div className="card-icon">{icon}</div>

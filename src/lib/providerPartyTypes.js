@@ -1,4 +1,4 @@
-import { canonicalProviderCategory } from "./providerCategories.js";
+import { getProviderCategories } from "./providerCategories.js";
 
 export const PARTY_TYPES = [
   { label: "Compleanno", keywords: ["compleanno", "birthday"] },
@@ -22,7 +22,9 @@ function providerText(provider) {
 }
 
 export function isPartyProvider(provider) {
-  return canonicalProviderCategory(provider.provider_kind) === "feste";
+  return getProviderCategories(provider).some((category) =>
+    category === "animatori" || category === "sale_feste"
+  );
 }
 
 export function getPartyTypes(provider) {

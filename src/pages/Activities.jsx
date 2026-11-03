@@ -1,35 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase.js";
 import {
-  canonicalProviderCategory,
+  getProviderCategories,
   providerCategoryName
 } from "../lib/providerCategories.js";
-
-const PARTY_TYPES = [
-  { value: "animatore", label: "Animatori" },
-  { value: "sala_feste", label: "Sale Feste / Eventi" }
-];
 
 function normalizeFilterValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function normalizedProviderKind(provider) {
-  return normalizeFilterValue(provider.provider_kind);
-}
-
-function providerCategory(provider) {
-  return canonicalProviderCategory(normalizedProviderKind(provider));
-}
-
-function normalizedPartyType(provider) {
-  return normalizeFilterValue(provider.party_type);
-}
-
 export default function Activities() {
   const [providers, setProviders] = useState([]);
   const [category, setCategory] = useState("");
-  const [partyType, setPartyType] = useState("");
   const [city, setCity] = useState("");
   const [premiumOnly, setPremiumOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -66,7 +48,7 @@ export default function Activities() {
 
   const categories = useMemo(
     () => [...new Set(providers
-      .map(providerCategory)
+      .flatMap(getProviderCategories)
       .filter(Boolean))]
       .sort((a, b) => providerCategoryName(a).localeCompare(providerCategoryName(b), "it")),
     [providers]
@@ -79,40 +61,31 @@ export default function Activities() {
   const filteredProviders = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("it-IT");
     const selectedCategory = normalizeFilterValue(category);
-    const selectedPartyType = normalizeFilterValue(partyType);
     const results = providers
       .filter((provider) => {
-        const providerKind = normalizedProviderKind(provider);
-        const normalizedCategory = canonicalProviderCategory(providerKind);
+        const providerCategories = getProviderCategories(provider);
 
-        if (selectedCategory && normalizedCategory !== selectedCategory) return false;
-        if (
-          selectedCategory === "feste" &&
-          selectedPartyType &&
-          normalizedPartyType(provider) !== selectedPartyType
-        ) return false;
+        if (!providerCategories.length && normalizeFilterValue(provider.provider_kind) === "feste") {
+          return false;
+        }
+        if (selectedCategory && !providerCategories.includes(selectedCategory)) return false;
         if (city && provider.city !== city) return false;
         if (premiumOnly && !provider.premium) return false;
         if (!query) return true;
-        return [provider.name, providerCategory(provider), provider.city, provider.services]
+        return [
+          provider.name,
+          ...providerCategories.map(providerCategoryName),
+          provider.city,
+          provider.services
+        ]
           .filter(Boolean)
           .some((value) => value.toLocaleLowerCase("it-IT").includes(query));
       })
       .sort((a, b) => Number(Boolean(b.premium)) - Number(Boolean(a.premium)) ||
         (a.name ?? "").localeCompare(b.name ?? "", "it"));
 
-    console.log("Feste filter diagnostic", {
-      selectedCategory,
-      selectedPartyType,
-      providersCount: providers.length,
-      filteredProvidersCount: results.length
-    });
     return results;
-  }, [providers, category, city, partyType, premiumOnly, search]);
-
-  useEffect(() => {
-    if (normalizeFilterValue(category) !== "feste") setPartyType("");
-  }, [category]);
+  }, [providers, category, city, premiumOnly, search]);
 
   return (
     <div className="activities-page">
@@ -120,7 +93,7 @@ export default function Activities() {
         <a className="activities-brand" href="/">ToscanaFamily</a>
         <span className="activities-eyebrow">SCOPRI IL TERRITORIO</span>
         <h1>Attività per tutta la famiglia</h1>
-        <p>Feste, spazi gioco e servizi per organizzare momenti speciali.</p>
+        <p>Animatori, sale feste, spazi gioco e servizi per organizzare momenti speciali.</p>
       </header>
 
       <nav className="activities-nav" aria-label="Menu principale">
@@ -147,18 +120,6 @@ export default function Activities() {
               ))}
             </select>
           </label>
-
-          {category === "feste" && (
-            <label>
-              <span>Categoria</span>
-              <select value={partyType} onChange={(event) => setPartyType(event.target.value)}>
-                <option value="">Tutti</option>
-                {PARTY_TYPES.map(({ value, label }) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
-          )}
 
           <label className="activities-search">
             <span>Ricerca libera</span>
@@ -194,7 +155,7 @@ export default function Activities() {
                 <article className="activity-card" key={provider.id}>
                   <div className="activity-card-heading">
                     <span className="activity-kind">
-                      {providerCategoryName(providerCategory(provider))}
+                      {getProviderCategories(provider).map(providerCategoryName).join(" · ")}
                     </span>
                     {provider.premium && <span className="activity-premium">Premium</span>}
                   </div>

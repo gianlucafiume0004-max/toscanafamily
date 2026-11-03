@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase.js";
 import {
-  canonicalProviderCategory,
+  getProviderCategories,
   providerCategoryName
 } from "../lib/providerCategories.js";
 
@@ -102,8 +102,8 @@ export default function ProviderDetail({ providerId }) {
         return;
       }
 
-      const categoryId = canonicalProviderCategory(provider.provider_kind);
-      if (!categoryId) {
+      const categoryIds = getProviderCategories(provider);
+      if (!categoryIds.length) {
         setSimilarProviders([]);
         setSimilarError("");
         return;
@@ -113,7 +113,7 @@ export default function ProviderDetail({ providerId }) {
       setSimilarError("");
       const { data, error: queryError } = await supabase
         .from("providers")
-        .select("id, name, city, provider_kind")
+        .select("id, name, city, provider_kind, party_type")
         .order("name", { ascending: true });
 
       if (cancelled) return;
@@ -125,7 +125,7 @@ export default function ProviderDetail({ providerId }) {
       setSimilarProviders((data ?? [])
         .filter((candidate) =>
           String(candidate.id) !== String(provider.id) &&
-          canonicalProviderCategory(candidate.provider_kind) === categoryId
+          getProviderCategories(candidate).some((categoryId) => categoryIds.includes(categoryId))
         )
         .slice(0, 3));
     }
@@ -143,7 +143,9 @@ export default function ProviderDetail({ providerId }) {
   const websiteValue = asText(provider?.website);
   const website = websiteHref(websiteValue);
   const description = asText(provider?.description || provider?.notes || provider?.services);
-  const category = providerCategoryName(canonicalProviderCategory(provider?.provider_kind));
+  const category = getProviderCategories(provider ?? {})
+    .map(providerCategoryName)
+    .join(" · ");
 
   return (
     <main className="provider-detail-page">
