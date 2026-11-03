@@ -10,6 +10,7 @@ import {
   providerNotesWithoutAddress
 } from "../lib/providerLocation.js";
 import { providerServiceTags } from "../lib/providerServiceTags.js";
+import ReviewsSection from "../components/reviews/ReviewsSection.jsx";
 
 function asText(value) {
   if (value == null) return "";
@@ -247,6 +248,9 @@ export default function ProviderDetail({ providerId }) {
                   ))}
                 </dl>
               </section>
+            )}
+            {getProviderCategories(provider).includes("animatori") && (
+              <ReviewsSection providerId={provider.id} providerName={provider.name} />
             )}
           </div>
         </article>

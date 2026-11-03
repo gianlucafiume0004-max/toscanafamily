@@ -5,6 +5,7 @@ import ProviderDetail from "./pages/ProviderDetail.jsx";
 import Parks, { isTargetProvince } from "./pages/Parks.jsx";
 import { getProviderCategories } from "./lib/providerCategories.js";
 import ProviderFeatureCard from "./components/ProviderFeatureCard.jsx";
+import useProviderRatingStats from "./hooks/useProviderRatingStats.js";
 
 const TABS = [
   { key: "parks", label: "Parchi", icon: "🌳" },
@@ -881,6 +882,7 @@ function getWhenDateRange(when, selectedDate) {
 }
 
 function HomeApp() {
+  const providerRatingStats = useProviderRatingStats();
   const [active, setActive] = useState("parks");
   const [parks, setParks] = useState([]);
   const [events, setEvents] = useState([]);
@@ -1288,6 +1290,7 @@ function HomeApp() {
                   key={item.id}
                   item={item}
                   active={active}
+                  ratingStats={active === "animatori" ? (providerRatingStats[item.id] || { count: 0, sum: 0 }) : undefined}
                   onShowEventDetails={() => setSelectedEvent(item)}
                 />
               ))}
@@ -1320,7 +1323,7 @@ function HomeApp() {
   );
 }
 
-function Card({ item, active, onShowEventDetails }) {
+function Card({ item, active, ratingStats, onShowEventDetails }) {
   if (active === "events") {
     const ageColors = getEventAgeColors(item.age_range);
     const ageRange = formatEventAgeRange(item.age_range);
@@ -1357,6 +1360,8 @@ function Card({ item, active, onShowEventDetails }) {
     return (
       <ProviderFeatureCard
         provider={item}
+        variant={active}
+        ratingStats={ratingStats}
       />
     );
   }

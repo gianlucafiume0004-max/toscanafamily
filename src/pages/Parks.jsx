@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import { supabase } from "../lib/supabase.js";
+import StarRating from "../components/reviews/StarRating.jsx";
+import RatingSummary from "../components/reviews/RatingSummary.jsx";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
@@ -258,45 +260,12 @@ function ParkCard({ park, rating, ratingStats, onRate, onSelect }) {
       <div className="card-icon">{parkVisualIcons[visualType]}</div>
       <div className="card-body">
         <h3>{displayParkName(park)}</h3>
-        <div className="park-rating" role="group" aria-label={`Valutazione di ${displayParkName(park)}`}>
-          {Array.from({ length: 5 }, (_, index) => {
-            const value = index + 1;
-            const isSelected = value <= rating;
-
-            return (
-              <button
-                key={value}
-                type="button"
-                aria-label={`${value} ${value === 1 ? "stella" : "stelle"} su 5`}
-                aria-pressed={isSelected}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRate(value);
-                }}
-                onKeyDown={(event) => event.stopPropagation()}
-                style={{
-                  background: "none",
-                  border: 0,
-                  padding: "0 2px",
-                  color: isSelected ? "#f5a623" : "#aab3af",
-                  cursor: "pointer",
-                  fontSize: "1.5rem",
-                  lineHeight: 1
-                }}
-              >
-                {isSelected ? "★" : "☆"}
-              </button>
-            );
-          })}
-        </div>
-        <p className="location">
-          {ratingStats?.count
-            ? `⭐ ${(ratingStats.sum / ratingStats.count).toLocaleString("it-IT", {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1
-              })} · ${ratingStats.count} ${ratingStats.count === 1 ? "valutazione" : "valutazioni"}`
-            : "Nessuna valutazione"}
-        </p>
+        <StarRating
+          value={rating}
+          onChange={onRate}
+          label={`Valutazione di ${displayParkName(park)}`}
+        />
+        <RatingSummary stats={ratingStats} />
         <p className="location">
           📍 {park.comune || "Comune non disponibile"}{park.provincia ? ` · ${park.provincia}` : ""}
         </p>
@@ -309,7 +278,7 @@ function ParkCard({ park, rating, ratingStats, onRate, onSelect }) {
               onSelect();
             }}
           >
-            Tutte le info
+            ℹ️ Tutte le info
           </button>
           {directions && (
             <a

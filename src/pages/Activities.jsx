@@ -5,12 +5,14 @@ import {
   providerCategoryName
 } from "../lib/providerCategories.js";
 import ProviderFeatureCard from "../components/ProviderFeatureCard.jsx";
+import useProviderRatingStats from "../hooks/useProviderRatingStats.js";
 
 function normalizeFilterValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
 export default function Activities() {
+  const providerRatingStats = useProviderRatingStats();
   const [providers, setProviders] = useState([]);
   const [category, setCategory] = useState("");
   const [city, setCity] = useState("");
@@ -163,6 +165,10 @@ export default function Activities() {
                     <ProviderFeatureCard
                       key={provider.id}
                       provider={provider}
+                      variant={featureCategory}
+                      ratingStats={featureCategory === "animatori"
+                        ? (providerRatingStats[provider.id] || { count: 0, sum: 0 })
+                        : undefined}
                     />
                   );
                 }

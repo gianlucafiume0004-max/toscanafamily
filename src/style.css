@@ -446,7 +446,25 @@ article.provider-feature-card:hover { transform: translateY(-4px); box-shadow: 0
 }
 .provider-feature-card-actions > .provider-feature-detail:hover { filter: brightness(.97); transform: translateY(-1px); }
 .provider-feature-card-actions > .provider-feature-detail:focus-visible { outline: 3px solid #174a88; outline-offset: 3px; }
+article.provider-feature-card--sale-feste { border-top-color: #7c3aed; }
 .provider-card-link { color: inherit; text-decoration: none; }
+.provider-feature-rating { margin: 0; color: #547064; font-weight: 750; }
+.provider-review-form { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin: 14px 0; }
+.provider-review-field { display: flex; width: 100%; flex-direction: column; gap: 6px; color: #385448; font-weight: 700; font-size: .9rem; }
+.provider-review-field textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid #b9cfc5; border-radius: 12px; padding: 10px 12px; font: inherit; color: #24313a; }
+.provider-review-form button[type="submit"] { border: 0; border-radius: 12px; padding: 11px 16px; color: white; background: linear-gradient(135deg, var(--orange), #ff7548); font-weight: 900; cursor: pointer; }
+.provider-review-form button[type="submit"]:disabled { opacity: .55; cursor: not-allowed; }
+.provider-review-error { margin: 0; color: #9b1c1c; font-weight: 700; }
+.provider-review-note { margin: 10px 0; color: #53665e; }
+.provider-review-list { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.provider-review-item { min-width: 0; border: 1px solid #e0ece6; border-radius: 14px; padding: 12px 14px; background: #fbfefc; }
+.provider-review-item p { margin: 6px 0 0; color: #3d4f47; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-line; }
+.provider-review-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; color: #5e6f68; font-size: .85rem; }
+.provider-review-stars { color: #b87400; font-size: 1.05rem; letter-spacing: 1px; }
+article .provider-review-field > span,
+article .provider-review-stars { padding: 0; border-radius: 0; background: transparent; }
+article .provider-review-field > span { color: #385448; font-size: .9rem; }
+article .provider-review-stars { color: #b87400; font-size: 1.05rem; }
 .provider-card-link:hover { text-decoration: underline; }
 .provider-detail-page {
   min-height: 100vh;

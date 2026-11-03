@@ -1,7 +1,8 @@
 import { providerStreetAddress } from "../lib/providerLocation.js";
 import { providerServiceTags } from "../lib/providerServiceTags.js";
+import RatingSummary from "./reviews/RatingSummary.jsx";
 
-export default function ProviderFeatureCard({ provider }) {
+export default function ProviderFeatureCard({ provider, variant, ratingStats }) {
   const address = providerStreetAddress(provider);
   const serviceTags = providerServiceTags(provider.services);
   const city = typeof provider.city === "string" ? provider.city.trim() : "";
@@ -14,10 +15,11 @@ export default function ProviderFeatureCard({ provider }) {
         : "";
 
   return (
-    <article className="provider-feature-card">
+    <article className={`provider-feature-card${variant === "sale_feste" ? " provider-feature-card--sale-feste" : ""}`}>
       <h2 className="provider-feature-title">{provider.name}</h2>
       {address && <p className="provider-feature-address">📍 {address}</p>}
       {city && <p className="provider-feature-location">📍 {city}</p>}
+      {ratingStats && <RatingSummary className="provider-feature-rating" stats={ratingStats} />}
       {serviceTags.length > 0 && (
         <ul className="provider-service-tags" aria-label="Servizi principali">
           {serviceTags.map(({ id, label }) => (
@@ -33,7 +35,7 @@ export default function ProviderFeatureCard({ provider }) {
           className="provider-feature-detail"
           href={`/provider/${encodeURIComponent(provider.id)}`}
         >
-          📝 Tutte le info
+          ℹ️ Tutte le info
         </a>
       </div>
     </article>
