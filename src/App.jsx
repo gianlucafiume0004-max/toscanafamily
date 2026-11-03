@@ -534,7 +534,7 @@ function EventDirectActions({ actions, className = "" }) {
 }
 
 function eventCostInfo(event) {
-  const costText = [event.cost, event.description]
+  const costText = [event.cost, event.description, event.booking_notes]
     .filter(isUsableEventText)
     .join(" ");
   if (!costText) return null;
@@ -553,7 +553,9 @@ function eventCostInfo(event) {
     };
   }
 
-  const free = /\b(?:gratuit\w*|gratis|free|ingresso\s+libero|accesso\s+libero)\b/i.test(costText);
+  const freeAccess = /\b(?:ingresso|accesso|partecipazione|event\w*)\s+(?:è\s+|ad\s+)?(?:gratuit\w*|liber\w*)\b/i.test(costText);
+  if (freeAccess) return { type: "free", title: "🆓 Gratuito", price: "" };
+  const free = /\b(?:gratuit\w*|gratis|free)\b/i.test(costText);
   if (free) return { type: "free", title: "🆓 Gratuito", price: "" };
   if (/\b(?:a|con)\s+pagamento\b/i.test(costText)) {
     return { type: "paid", title: "💰 A pagamento", price: "" };
@@ -561,21 +563,32 @@ function eventCostInfo(event) {
   return null;
 }
 
-function eventReservationStatus(event) {
-  const text = [eventText(event), event.booking_notes]
+function eventAccessInfo(event) {
+  const text = [event.booking_notes, event.cost, event.description]
     .filter(isUsableEventText)
     .join(" ");
-  if (/prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|senza\s+prenotazion\w*/i.test(text)) {
-    return "Non richiesta";
-  }
-  if (event.booking_required === true ||
-    /prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|prenotare\s+(?:è\s+)?obbligator\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*/i.test(text)) {
+  return /\b(?:ingresso|accesso|partecipazione|event\w*|attivit\w*|laborator\w*)\s+(?:è\s+|ad\s+)?(?:gratuit\w*|liber\w*)\b/i.test(text)
+    ? { type: "free", title: "🆓 Gratuito", price: "" }
+    : null;
+}
+
+function eventReservationStatus(event) {
+  const notes = isUsableEventText(event.booking_notes) ? event.booking_notes : "";
+  const text = [eventText(event), notes]
+    .filter(isUsableEventText)
+    .join(" ");
+  if (event.booking_required === true) return "Obbligatoria";
+  if (/prenotazion\w*\s+(?:è\s+)?consigliat\w*|si\s+consiglia\s+(?:la\s+)?prenotazion\w*|prenotazion\w*\s+raccomandat\w*/i.test(notes)) return "Consigliata";
+  if (/prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|prenotare\s+(?:è\s+)?obbligator\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*/i.test(text)) {
     return "Obbligatoria";
   }
-  if (/prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*/i.test(text)) {
+  if (/prenotazion\w*\s+(?:è\s+)?consigliat\w*|si\s+consiglia\s+(?:la\s+)?prenotazion\w*|prenotazion\w*\s+raccomandat\w*/i.test(text)) {
     return "Consigliata";
   }
-  if (event.booking_required === false) return "Non richiesta";
+  if (
+    event.booking_required === false &&
+    /prenotazion\w*\s+(?:non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|non\s+occorre|non\s+serve)|non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)\s+(?:la\s+)?prenotazion\w*|senza\s+(?:alcuna\s+)?prenotazion\w*|non\s+(?:occorre|serve|bisogna)\s+(?:prenotare|la\s+prenotazion\w*)/i.test(notes)
+  ) return "Non richiesta";
   return "";
 }
 
@@ -590,30 +603,38 @@ function eventBookingInstructions(event) {
 
 function eventReservationText(event) {
   const status = eventReservationStatus(event);
-  if (status === "Non richiesta") return "✅ Prenotazione non necessaria";
+  if (status === "Non richiesta") return "✅ Senza prenotazione";
   if (status === "Consigliata") return "⚠️ Prenotazione consigliata";
   if (status === "Obbligatoria") return "🎟️ Prenotazione obbligatoria";
   return "";
 }
 
-function EventCostBadge({ event, showReservation = true }) {
-  const cost = eventCostInfo(event);
-  const reservationStatus = showReservation ? eventReservationStatus(event) : "";
-  const reservationClass = {
+function eventReservationClass(status) {
+  return {
     "Non richiesta": "event-reservation--not-required",
     Consigliata: "event-reservation--recommended",
     Obbligatoria: "event-reservation--required"
-  }[reservationStatus];
+  }[status] || "";
+}
+
+function EventCostBadge({ event, showReservation = true }) {
+  const cost = eventCostInfo(event);
+  const access = eventAccessInfo(event);
+  const costs = access
+    ? [access, ...(cost?.type === "paid" ? [cost] : [])]
+    : cost ? [cost] : [];
+  const reservationStatus = showReservation ? eventReservationStatus(event) : "";
+  const reservationClass = eventReservationClass(reservationStatus);
   const reservationText = reservationClass ? eventReservationText(event) : "";
-  if (!cost && !reservationClass) return null;
+  if (!costs.length && !reservationClass) return null;
   return (
     <div className="event-cost-badges">
-      {cost && (
-        <div className={`event-cost-badge event-cost--${cost.type}`}>
-          <strong>{cost.title}</strong>
-          {cost.price && <span>{cost.price}</span>}
+      {costs.map((badge, index) => (
+        <div className={`event-cost-badge event-cost--${badge.type}`} key={`${badge.title}-${index}`}>
+          <strong>{badge.title}</strong>
+          {badge.price && <span>{badge.price}</span>}
         </div>
-      )}
+      ))}
       {reservationClass && (
         <div className={`event-cost-badge event-reservation-badge ${reservationClass}`}>
           <strong>{reservationText}</strong>
@@ -1469,7 +1490,11 @@ function EventDetails({ event, onClose }) {
     },
     reservationStatus && {
       label: "🎟️ Prenotazione",
-      value: eventReservationText(event)
+      value: (
+        <span className={`event-cost-badge event-reservation-badge ${eventReservationClass(reservationStatus)}`}>
+          <strong>{eventReservationText(event)}</strong>
+        </span>
+      )
     },
     canShowBookingDetails && {
       label: "🎟️ Come prenotare",
@@ -1516,7 +1541,7 @@ function EventDetails({ event, onClose }) {
             <div className="details-grid event-details-grid">
               {details.map(({ label, value }) => (
                 <div
-                  className={`detail-item${label === "💰 Costo" ? " event-cost-detail" : ""}${label === "🎟️ Come prenotare" ? " event-booking-detail" : ""}`}
+                  className={`detail-item${label === "💰 Costo" ? " event-cost-detail" : ""}${label === "🎟️ Prenotazione" ? " event-reservation-detail" : ""}${label === "🎟️ Come prenotare" ? " event-booking-detail" : ""}`}
                   key={label}
                 >
                   <strong>{label}</strong>

@@ -254,6 +254,8 @@ footer { margin-top: 34px; padding: 30px 22px; text-align: center; color: #63756
 .event-address-lines span { padding: 0; border-radius: 0; color: inherit; background: transparent; font-size: inherit; font-weight: inherit; }
 .event-details-grid .event-cost-detail { background: transparent; }
 .event-details-grid .event-cost-badge { margin: 0; }
+.event-details-grid .event-reservation-detail { border: 2px solid #d6e5dc; background: #f8fcf9; }
+.event-details-grid .event-reservation-detail .event-reservation-badge { padding: 11px 15px; border-width: 2px; box-shadow: 0 2px 8px rgba(36,49,44,.08); }
 .event-booking-info, .event-contact-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .event-contact-links > * { overflow-wrap: anywhere; }
 .event-details-grid .event-booking-detail { padding: 14px; border: 1px solid #f0d47a; background: #fff9e6; }
