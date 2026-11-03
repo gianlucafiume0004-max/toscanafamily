@@ -4,6 +4,7 @@ import Activities from "./pages/Activities.jsx";
 import ProviderDetail from "./pages/ProviderDetail.jsx";
 import Parks, { isTargetProvince } from "./pages/Parks.jsx";
 import { getProviderCategories } from "./lib/providerCategories.js";
+import ProviderFeatureCard from "./components/ProviderFeatureCard.jsx";
 
 const TABS = [
   { key: "parks", label: "Parchi", icon: "🌳" },
@@ -375,7 +376,9 @@ function eventText(event) {
 }
 
 function eventPhoneData(event) {
-  const description = String(event.description || "");
+  const description = [event.description, event.booking_notes]
+    .filter(isUsableEventText)
+    .join(" ");
   const phoneFromDescription = description.match(
     /(?:\+|00)?39[\s().-]*[03](?:[\s().-]*\d){7,10}|(?:\+|00)?[03](?:[\s().-]*\d){8,10}/
   )?.[0];
@@ -412,9 +415,12 @@ function eventPhoneData(event) {
 
 function eventEmail(event) {
   if (isUsableEventText(event.email)) return event.email.trim();
-  const found = String(event.description || "").match(
-    /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+(?![A-Z0-9.-])/i
-  )?.[0];
+  const found = [event.description, event.booking_notes]
+    .filter(isUsableEventText)
+    .join(" ")
+    .match(
+      /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z]{2,})+(?![A-Z0-9.-])/i
+    )?.[0];
   if (!found) return "";
 
   const [localPart, ...domainParts] = found.split("@");
@@ -428,7 +434,9 @@ function eventEmail(event) {
 function eventActionItems(event) {
   const { phoneLink, whatsappUrl } = eventPhoneData(event);
   const email = eventEmail(event);
-  const officialUrl = getHttpUrl(event.official_url) || getHttpUrl(event.source_url);
+  const officialUrl = getHttpUrl(event.website_url) ||
+    getHttpUrl(event.official_url) ||
+    getHttpUrl(event.source_url);
   const bookingUrl = getHttpUrl(event.booking_url);
   return [
     phoneLink && {
@@ -448,7 +456,7 @@ function eventActionItems(event) {
       className: "event-booking-button--email"
     },
     officialUrl && {
-      label: "🌐 Apri sito",
+      label: "🌐 Sito organizzatore",
       href: officialUrl,
       className: "event-booking-button--website",
       external: true
@@ -491,37 +499,21 @@ function eventCostInfo(event) {
     /(?:\bda\s*)?(?:€\s*|eur(?:o)?\s*)(\d+(?:[.,]\d{1,2})?|\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?)(?!\d)|(?:\bda\s*)?(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur(?:o)?\b)/i
   );
   const amount = priceMatch?.[1] || priceMatch?.[2];
-  const reservationRequired =
-    /prenotazion\w*\s+obbligator\w*|obbligo\s+di\s+prenotazion\w*/i.test(costText);
   if (amount) {
     const isStartingPrice = /^\s*da\b/i.test(priceMatch[0]);
     const formattedAmount = amount.replace(/\.(?=\d{1,2}$)/, ",");
     return {
       type: "paid",
-      title: `🔴 ${isStartingPrice ? "Da " : ""}€ ${formattedAmount}`,
-      price: "",
-      reservationRequired
+      title: "💰 A pagamento",
+      price: `${isStartingPrice ? "Da " : ""}€ ${formattedAmount}`
     };
   }
 
-  const free = /\b(?:gratuit\w*|gratis|free|ingresso\s+libero)\b/i.test(costText);
-
-  if (reservationRequired) {
-    if (free) {
-      return {
-        type: "free",
-        title: "🟢 Gratuito",
-        price: "",
-        reservationRequired: true
-      };
-    }
-    return {
-      type: "reservation",
-      title: "🟡 Prenotazione obbligatoria",
-      price: free ? "Gratis con prenotazione" : ""
-    };
+  const free = /\b(?:gratuit\w*|gratis|free|ingresso\s+libero|accesso\s+libero)\b/i.test(costText);
+  if (free) return { type: "free", title: "🆓 Gratuito", price: "" };
+  if (/\b(?:a|con)\s+pagamento\b/i.test(costText)) {
+    return { type: "paid", title: "💰 A pagamento", price: "" };
   }
-  if (free) return { type: "free", title: "🟢 Gratuito", price: "" };
   return null;
 }
 
@@ -529,32 +521,47 @@ function eventReservationStatus(event) {
   const text = [eventText(event), event.booking_notes]
     .filter(isUsableEventText)
     .join(" ");
+  if (/prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|senza\s+prenotazion\w*/i.test(text)) {
+    return "Non richiesta";
+  }
   if (event.booking_required === true ||
     /prenotazion\w*\s+(?:obbligator\w*|richiest\w*)|obbligo\s+di\s+prenotazion\w*|prenotare\s+(?:è\s+)?obbligator\w*|su\s+prenotazion\w*|iscrizion\w*\s+obbligator\w*/i.test(text)) {
     return "Obbligatoria";
   }
-  if (event.booking_required === false &&
-    !/prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*/i.test(text)) {
-    return "Non richiesta";
-  }
-  if (/prenotazion\w*\s+non\s+(?:è\s+)?(?:necessari\w*|obbligator\w*|richiest\w*)|senza\s+prenotazion\w*/i.test(text)) {
-    return "Non richiesta";
-  }
   if (/prenotazion\w*\s+consigliat\w*|consigliat\w*.{0,30}prenotazion\w*|iscrizion\w*\s+consigliat\w*/i.test(text)) {
     return "Consigliata";
   }
+  if (event.booking_required === false) return "Non richiesta";
   return "";
+}
+
+function eventBookingInstructions(event) {
+  return [event.booking_notes, event.description].find((value) =>
+    isUsableEventText(value) && (
+      /(?:prenot\w*|iscrizion\w*|registrazion\w*|modul\w*|form\b|bigliett\w*|ticket)[\s\S]{0,120}(?:online|telefon|telefono|chiam|tel\b|email|e-mail|mail|scriv|contatt|presso|compil|link|sito|acquist|invia)/i.test(value) ||
+      /(?:online|telefon|telefono|chiam|tel\b|email|e-mail|mail|scriv|contatt|presso|compil|link|sito|acquist|invia)[\s\S]{0,120}(?:prenot\w*|iscrizion\w*|registrazion\w*|modul\w*|form\b|bigliett\w*|ticket)/i.test(value)
+    )
+  )?.trim() || "";
 }
 
 function eventReservationText(event) {
   const status = eventReservationStatus(event);
-  return status ? `Prenotazione ${status.toLowerCase()}` : "";
+  if (status === "Non richiesta") return "✅ Prenotazione non necessaria";
+  if (status === "Consigliata") return "⚠️ Prenotazione consigliata";
+  if (status === "Obbligatoria") return "🎟️ Prenotazione obbligatoria";
+  return "";
 }
 
-function EventCostBadge({ event }) {
+function EventCostBadge({ event, showReservation = true }) {
   const cost = eventCostInfo(event);
-  const reservationText = eventReservationText(event);
-  if (!cost && !reservationText) return null;
+  const reservationStatus = showReservation ? eventReservationStatus(event) : "";
+  const reservationClass = {
+    "Non richiesta": "event-reservation--not-required",
+    Consigliata: "event-reservation--recommended",
+    Obbligatoria: "event-reservation--required"
+  }[reservationStatus];
+  const reservationText = reservationClass ? eventReservationText(event) : "";
+  if (!cost && !reservationClass) return null;
   return (
     <div className="event-cost-badges">
       {cost && (
@@ -563,9 +570,9 @@ function EventCostBadge({ event }) {
           {cost.price && <span>{cost.price}</span>}
         </div>
       )}
-      {reservationText && (
-        <div className="event-cost-badge event-cost--reservation">
-          <strong>🟡 {reservationText}</strong>
+      {reservationClass && (
+        <div className={`event-cost-badge event-reservation-badge ${reservationClass}`}>
+          <strong>{reservationText}</strong>
         </div>
       )}
     </div>
@@ -1251,6 +1258,7 @@ function HomeApp() {
 function Card({ item, active, onShowEventDetails }) {
   if (active === "events") {
     const ageColors = getEventAgeColors(item.age_range);
+    const ageRange = formatEventAgeRange(item.age_range);
 
     return (
       <article
@@ -1270,12 +1278,21 @@ function Card({ item, active, onShowEventDetails }) {
                 .join(" · ")}
             </p>
           ) : null}
+          {ageRange && <p className="event-age-badge">{ageRange}</p>}
           <EventCostBadge event={item} />
           <div className="card-actions event-card-actions">
             <button type="button" onClick={onShowEventDetails}>ℹ️ Tutte le info</button>
           </div>
         </div>
       </article>
+    );
+  }
+
+  if (active === "animatori" || active === "sale_feste") {
+    return (
+      <ProviderFeatureCard
+        provider={item}
+      />
     );
   }
 
@@ -1337,9 +1354,15 @@ function EventDetails({ event, onClose }) {
   const ageRange = formatEventAgeRange(event.age_range);
   const cost = eventCostInfo(event);
   const reservationStatus = eventReservationStatus(event);
-  const officialUrl = getHttpUrl(event.official_url) || getHttpUrl(event.source_url);
+  const bookingUrl = getHttpUrl(event.booking_url);
+  const bookingInstructions = eventBookingInstructions(event);
   const organizer = isUsableEventText(event.organizer) ? event.organizer.trim() : "";
   const actionItems = eventActionItems(event);
+  const canShowBookingDetails = reservationStatus !== "Non richiesta" &&
+    (reservationStatus === "Obbligatoria" ||
+      reservationStatus === "Consigliata" ||
+      Boolean(bookingUrl) ||
+      Boolean(bookingInstructions));
   const addressStreet = streetNumber
     ? address.replace(new RegExp(`(?:\\s|,)${streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "").trim()
     : address;
@@ -1357,12 +1380,12 @@ function EventDetails({ event, onClose }) {
       className: "event-booking-button--phone",
       external: true
     },
-    officialUrl && {
-      label: "🌐 Apri sito",
-      href: officialUrl,
-      className: "event-booking-button--website",
-      external: true
-    }
+    ...actionItems.filter((action) => [
+      "event-booking-button--phone",
+      "event-booking-button--whatsapp",
+      "event-booking-button--email",
+      "event-booking-button--website"
+    ].includes(action.className))
   ].filter(Boolean);
   const highlightedHrefs = new Set(highlightedActions.map((action) => action.href));
   const bookingActionTypes = new Set([
@@ -1372,13 +1395,22 @@ function EventDetails({ event, onClose }) {
     "event-booking-button--online"
   ]);
   const seenActionHrefs = new Set(highlightedHrefs);
-  const bookingActions = actionItems.filter((action) => {
-    if (!bookingActionTypes.has(action.className) || seenActionHrefs.has(action.href)) {
-      return false;
-    }
-    seenActionHrefs.add(action.href);
-    return true;
-  });
+  const bookingActions = canShowBookingDetails
+    ? actionItems.filter((action) => {
+      if (!bookingActionTypes.has(action.className) || seenActionHrefs.has(action.href)) {
+        return false;
+      }
+      seenActionHrefs.add(action.href);
+      return true;
+    })
+    : [];
+  const bookingContent = [
+    bookingInstructions && <p className="event-booking-instructions" key="instructions">{bookingInstructions}</p>,
+    bookingActions.length > 0 && <EventDirectActions actions={bookingActions} key="actions" />,
+    canShowBookingDetails && bookingActions.length === 0 && !bookingInstructions && (
+      <p className="event-booking-unavailable" key="unavailable">Contatti per la prenotazione non disponibili.</p>
+    )
+  ].filter(Boolean);
   const details = [
     { label: "📅 Data", value: date },
     { label: "⏰ Orario", value: time },
@@ -1389,18 +1421,18 @@ function EventDetails({ event, onClose }) {
     },
     cost && {
       label: "💰 Costo",
-      value: <EventCostBadge event={event} />
+      value: <EventCostBadge event={event} showReservation={false} />
     },
     reservationStatus && {
       label: "🎟️ Prenotazione",
-      value: reservationStatus
+      value: eventReservationText(event)
     },
-    bookingActions.length > 0 && {
+    canShowBookingDetails && bookingContent.length > 0 && {
       label: "🎟️ Come prenotare",
-      value: <EventDirectActions actions={bookingActions} />
+      value: <div className="event-booking-content">{bookingContent}</div>
     },
     organizer && { label: "👤 Organizzatore", value: organizer },
-    ageRange && { label: "👶 Età consigliata", value: ageRange }
+    ageRange && { label: "Età consigliata", value: ageRange }
   ].filter(Boolean);
 
   return (
@@ -1470,9 +1502,33 @@ function isUsableEventText(value) {
 
 function formatEventAgeRange(value) {
   if (!isUsableEventText(value)) return "";
-  if (/\bbambini\s+e\s+famiglie\b/i.test(value)) return "👨‍👩‍👧‍👦 Per tutta la famiglia";
+  const text = value.trim().replace(/[–—]/g, "-").replace(/\s+/g, " ");
+  const normalized = normalizeEventText(text);
+  if (/\b(?:per tutti|tutta la famiglia|bambini e famiglie|tutte le eta)\b/.test(normalized)) {
+    return "👨‍👩‍👧 Per tutti";
+  }
 
-  return value.trim();
+  const range = text.match(/(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)(?:\s*(mesi?|anni?|months?|years?))?/i);
+  if (range) {
+    const min = Number(range[1].replace(",", "."));
+    const max = Number(range[2].replace(",", "."));
+    const unit = range[3] || "anni";
+    const isMonths = /^(mesi?|months?)$/i.test(unit);
+    const minYears = isMonths ? min / 12 : min;
+    const maxYears = isMonths ? max / 12 : max;
+    const icon = maxYears <= 3 ? "👶" : minYears >= 6 ? "👦" : "🧒";
+    return `${icon} ${range[1]}-${range[2]} ${unit}`;
+  }
+
+  const startingAge = text.match(/(?:dai?|a partire da|eta minima|età minima)\s*(\d+(?:[.,]\d+)?)\s*(mesi?|anni?)?/i);
+  if (startingAge) {
+    const age = Number(startingAge[1].replace(",", "."));
+    const unit = startingAge[2] || "anni";
+    const isMonths = /^mesi?$/i.test(unit);
+    return `${isMonths && age <= 36 ? "👶" : age >= (isMonths ? 72 : 6) ? "👦" : "🧒"} ${startingAge[1]}+ ${unit}`;
+  }
+
+  return `🧒 ${text}`;
 }
 
 function getHttpUrl(value) {

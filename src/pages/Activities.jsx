@@ -4,6 +4,7 @@ import {
   getProviderCategories,
   providerCategoryName
 } from "../lib/providerCategories.js";
+import ProviderFeatureCard from "../components/ProviderFeatureCard.jsx";
 
 function normalizeFilterValue(value) {
   return String(value || "").trim().toLowerCase();
@@ -27,7 +28,7 @@ export default function Activities() {
 
       const { data, error: queryError } = await supabase
         .from("providers")
-        .select("id, name, provider_kind, party_type, city, province, services, website, premium")
+        .select("id, name, provider_kind, party_type, city, province, address, latitude, longitude, notes, services, phone, website, premium")
         .order("name", { ascending: true });
 
       if (cancelled) return;
@@ -151,26 +152,42 @@ export default function Activities() {
           <>
             <p className="activities-count">{filteredProviders.length} attività trovate</p>
             <section className="activities-grid" aria-label="Elenco attività">
-              {filteredProviders.map((provider) => (
-                <article className="activity-card" key={provider.id}>
-                  <div className="activity-card-heading">
-                    <span className="activity-kind">
-                      {getProviderCategories(provider).map(providerCategoryName).join(" · ")}
-                    </span>
-                    {provider.premium && <span className="activity-premium">Premium</span>}
-                  </div>
-                  <h2><a className="provider-card-link" href={`/provider/${encodeURIComponent(provider.id)}`}>{provider.name}</a></h2>
-                  <p className="activity-city">
-                    {[provider.city, provider.province].filter(Boolean).join(" · ")}
-                  </p>
-                  {provider.services && <p className="activity-services">{provider.services}</p>}
-                  {provider.website && (
-                    <a className="activity-website" href={provider.website} target="_blank" rel="noreferrer">
-                      Visita il sito <span aria-hidden="true">↗</span>
-                    </a>
-                  )}
-                </article>
-              ))}
+              {filteredProviders.map((provider) => {
+                const providerCategories = getProviderCategories(provider);
+                const featureCategory = providerCategories.find((kind) =>
+                  kind === "animatori" || kind === "sale_feste"
+                );
+
+                if (featureCategory) {
+                  return (
+                    <ProviderFeatureCard
+                      key={provider.id}
+                      provider={provider}
+                    />
+                  );
+                }
+
+                return (
+                  <article className="activity-card" key={provider.id}>
+                    <div className="activity-card-heading">
+                      <span className="activity-kind">
+                        {providerCategories.map(providerCategoryName).join(" · ")}
+                      </span>
+                      {provider.premium && <span className="activity-premium">Premium</span>}
+                    </div>
+                    <h2><a className="provider-card-link" href={`/provider/${encodeURIComponent(provider.id)}`}>{provider.name}</a></h2>
+                    <p className="activity-city">
+                      {[provider.city, provider.province].filter(Boolean).join(" · ")}
+                    </p>
+                    {provider.services && <p className="activity-services">{provider.services}</p>}
+                    {provider.website && (
+                      <a className="activity-website" href={provider.website} target="_blank" rel="noreferrer">
+                        Visita il sito <span aria-hidden="true">↗</span>
+                      </a>
+                    )}
+                  </article>
+                );
+              })}
             </section>
           </>
         )}
