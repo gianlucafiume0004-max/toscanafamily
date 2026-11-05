@@ -7,6 +7,8 @@ import {
 import {
   providerDirectionsUrl,
   providerFullAddress,
+  providerLocalityLabel,
+  providerStreetAddress,
   providerNotesWithoutAddress
 } from "../lib/providerLocation.js";
 import { providerServiceTags } from "../lib/providerServiceTags.js";
@@ -140,6 +142,10 @@ export default function ProviderDetail({ providerId }) {
   const emailHref = email ? `mailto:${email}` : "";
   const directions = providerDirectionsUrl(provider);
   const fullAddress = providerFullAddress(provider);
+  const isPartyRoom = getProviderCategories(provider ?? {}).includes("sale_feste");
+  const streetAddress = isPartyRoom ? providerStreetAddress(provider) : "";
+  const locality = isPartyRoom ? providerLocalityLabel(provider) : "";
+  const displayAddress = isPartyRoom ? streetAddress || locality : fullAddress;
   const socialLinks = [...new Set([provider?.social_url, provider?.facebook, provider?.instagram]
     .flatMap((value) => asText(value).split(/[;,]/))
     .map((value) => value.trim())
@@ -222,10 +228,17 @@ export default function ProviderDetail({ providerId }) {
                 ))}
               </nav>
             )}
-            {fullAddress && (
+            {displayAddress && (
               <section className="provider-detail-section" aria-labelledby="provider-location-title">
                 <h2 id="provider-location-title">Dove siamo</h2>
-                {fullAddress && <p className="provider-detail-city">📍 {fullAddress}</p>}
+                {isPartyRoom ? (
+                  <div className="park-card-info">
+                    {locality && <p className="location">📍 {locality}</p>}
+                    {streetAddress && <p className="location park-card-address">🏠 {streetAddress}</p>}
+                  </div>
+                ) : (
+                  <p className="provider-detail-city">📍 {displayAddress}</p>
+                )}
               </section>
             )}
             {socialLinks.length > 0 && (
@@ -275,7 +288,7 @@ export default function ProviderDetail({ providerId }) {
               </section>
             )}
             {ratingError && <p className="provider-review-error" role="alert">{ratingError}</p>}
-            {!isAnimator && (
+            {!isAnimator && !isPartyRoom && (
               <section className="provider-detail-section" aria-labelledby="provider-rating-title">
                 <h2 id="provider-rating-title">Valutazioni</h2>
                 <StarRating
@@ -291,7 +304,7 @@ export default function ProviderDetail({ providerId }) {
                 />
               </section>
             )}
-            {isAnimator && (
+            {(isAnimator || isPartyRoom) && (
               <ReviewsSection
                 providerId={provider.id}
                 providerName={provider.name}

@@ -76,6 +76,12 @@ export function providerFullAddress(provider) {
   return `${address}, ${city}`;
 }
 
+export function providerLocalityLabel(provider) {
+  const city = asText(provider?.city);
+  const province = asText(provider?.province);
+  return [city, province].filter(Boolean).join(" · ");
+}
+
 export function providerDirectionsUrl(provider) {
   const hasCoordinates = provider?.latitude != null &&
     provider?.latitude !== "" &&

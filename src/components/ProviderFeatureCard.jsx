@@ -1,10 +1,16 @@
 import { providerServiceTags } from "../lib/providerServiceTags.js";
+import {
+  providerLocalityLabel,
+  providerStreetAddress
+} from "../lib/providerLocation.js";
 import RatingSummary from "./reviews/RatingSummary.jsx";
 
 export default function ProviderFeatureCard({ provider, variant }) {
   const serviceTags = providerServiceTags(provider.services);
   const city = typeof provider.city === "string" ? provider.city.trim() : "";
   const province = typeof provider.province === "string" ? provider.province.trim() : "";
+  const streetAddress = variant === "sale_feste" ? providerStreetAddress(provider) : "";
+  const locality = variant === "sale_feste" ? providerLocalityLabel(provider) : "";
 
   return (
     <article className={`provider-feature-card${variant === "sale_feste" ? " provider-feature-card--sale-feste" : ""}`}>
@@ -19,7 +25,14 @@ export default function ProviderFeatureCard({ provider, variant }) {
             }}
           />
         )}
-        {(city || province) && (
+        {variant === "sale_feste" ? (
+          (locality || streetAddress) && (
+            <div className="park-card-info">
+              {locality && <p className="location">📍 {locality}</p>}
+              {streetAddress && <p className="location park-card-address">🏠 {streetAddress}</p>}
+            </div>
+          )
+        ) : (city || province) && (
           <p className="provider-feature-location">
             📍 {[city, province].filter(Boolean).join(" · ")}
           </p>
