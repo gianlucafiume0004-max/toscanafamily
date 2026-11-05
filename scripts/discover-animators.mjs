@@ -1,351 +1,787 @@
-﻿import "dotenv/config";
-import { writeFile } from "node:fs/promises";
+import "dotenv/config";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { readFile, writeFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
 
-const DRY_RUN = process.argv.includes("--dry-run");
+const SERVICE_TERMS = [
+  ["animazione", /\banimazion[ei]?\b/i],
+  ["feste per bambini", /\bfest[ae]\s+(?:di\s+)?compleanno\b|\bfest[ae]\s+per\s+bambini\b/i],
+  ["baby dance", /\bbaby[\s-]?dance\b/i],
+  ["truccabimbi", /\btruccabimbi\b|\bface[\s-]?painting\b/i],
+  ["laboratori creativi", /\blaborator[io].{0,30}creativ/i],
+  ["giochi", /\bgioch[io]\b/i],
+  ["spettacoli", /\bspettacol[io]\b/i],
+  ["magia", /\bmag[io]\b|\bmagia\b/i],
+  ["burattini", /\bburattin[io]\b/i],
+  ["mascotte", /\bmascott[ae]\b/i],
+  ["gonfiabili", /\bgonfiabil[ei]\b/i]
+];
+
+const SOCIAL_HOSTS = {
+  facebook: ["facebook.com", "fb.com"],
+  instagram: ["instagram.com"]
+};
+
+const BLOCKED_HOSTS = [
+  "paginegialle.it",
+  "paginebianche.it",
+  "prontopro.it",
+  "tuttocitta.it",
+  "yelp.com",
+  "tripadvisor.com",
+  "eventbrite.com",
+  "wikipedia.org",
+  "linkedin.com",
+  "youtube.com",
+  "tiktok.com",
+  "pinterest.com"
+];
+
+const PROVINCES = new Map([
+  ["arezzo", "AR"], ["ar", "AR"],
+  ["firenze", "FI"], ["fi", "FI"], ["florence", "FI"],
+  ["grosseto", "GR"], ["gr", "GR"],
+  ["livorno", "LI"], ["li", "LI"], ["leghorn", "LI"],
+  ["lucca", "LU"], ["lu", "LU"],
+  ["massa carrara", "MS"], ["massa-carrara", "MS"], ["ms", "MS"],
+  ["pisa", "PI"], ["pi", "PI"],
+  ["pistoia", "PT"], ["pt", "PT"],
+  ["prato", "PO"], ["po", "PO"],
+  ["siena", "SI"], ["si", "SI"]
+]);
+
+const RUN_ID = new Date().toISOString();
 const REPORT_PATH = process.env.REPORT_PATH || "animators-report.md";
-const MAX_NEW = Number(process.env.MAX_NEW_CANDIDATES || 60);
-const UA = "ToscanaFamilyBot/1.0 (+https://github.com/gianlucafiume0004-max/toscanafamily)";
+const DRY_RUN = process.argv.includes("--dry-run");
+const SOURCE_FILE = new URL("../data/animator-sources.json", import.meta.url);
+const PAGE_SIZE = 500;
+const REQUEST_TIMEOUT_MS = 12000;
+const USER_AGENT =
+  "ToscanaFamilyAnimatorDiscovery/1.0 (+https://github.com/gianlucafiume0004-max/toscanafamily)";
 
-const CITIES = [
-  ["Firenze", "FI"], ["Prato", "PO"], ["Pistoia", "PT"], ["Empoli", "FI"],
-  ["Scandicci", "FI"], ["Sesto Fiorentino", "FI"], ["Pisa", "PI"],
-  ["Livorno", "LI"], ["Lucca", "LU"], ["Arezzo", "AR"], ["Siena", "SI"],
-  ["Grosseto", "GR"], ["Massa", "MS"], ["Viareggio", "LU"]
-];
-
-const TAG_RULES = [
-  ["feste-compleanno", /compleann|birthday|festa/i],
-  ["mascotte", /mascott|personaggi|supereroi|principesse|costumi/i],
-  ["magia", /\bmag(o|ia|hi)\b|illusion/i],
-  ["truccabimbi", /trucca|face ?painting|pittura/i],
-  ["palloncini", /palloncin|balloon|twist/i],
-  ["baby-dance", /baby ?dance|mini ?disco|musica|dj\b/i],
-  ["bolle-di-sapone", /bolle/i],
-  ["laboratori", /laborator|creativ/i],
-  ["giochi", /giochi|gioco|animazione/i],
-  ["teatro-burattini", /burattin|teatro|spettacol/i],
-  ["gonfiabili", /gonfiabil/i],
-  ["eventi-piazza", /piazza|eventi|sagre|feste patronali/i],
-  ["a-domicilio", /domicilio|a casa|ovunque/i]
-];
-
-const BLOCKED_DOMAINS = [
-  "facebook.com", "instagram.com", "youtube.com", "tripadvisor.", "paginegialle.it",
-  "yelp.", "wikipedia.org", "amazon.", "subito.it", "google.", "pinterest.", "tiktok.com",
-  "linkedin.com", "twitter.com", "x.com", "paginebianche.it", "virgilio.it", "bing.com"
-];
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function fetchText(url, { timeout = 15000, method = "GET", body, headers = {} } = {}) {
-  const res = await fetch(url, {
-    method,
-    body,
-    headers: { "User-Agent": UA, "Accept-Language": "it-IT,it;q=0.9", ...headers },
-    signal: AbortSignal.timeout(timeout),
-    redirect: "follow"
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
-  return res.text();
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Variabile d'ambiente mancante: ${name}`);
+  return value;
 }
 
-const normalizeName = (s) =>
-  (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/\b(animazione|animatori|animatore|feste|bambini|srl|snc|asd|di|e|il|la|per|the)\b/g, " ")
-    .replace(/[^a-z0-9]+/g, " ").trim();
+async function loadSourceUrls() {
+  const parsed = JSON.parse(await readFile(SOURCE_FILE, "utf8"));
+  if (!Array.isArray(parsed)) {
+    throw new Error("data/animator-sources.json deve contenere un array.");
+  }
 
-const normalizePhone = (p) => {
-  if (!p) return null;
-  let d = p.replace(/[^\d+]/g, "");
-  if (d.startsWith("00")) d = "+" + d.slice(2);
-  if (d.startsWith("+39")) d = d.slice(3);
-  d = d.replace(/\D/g, "");
-  return d.length >= 8 && d.length <= 11 ? d : null;
-};
+  return parsed.map((source, index) => {
+    if (!source || typeof source.name !== "string" || !source.name.trim()) {
+      throw new Error(`Fonte ${index + 1}: campo name obbligatorio.`);
+    }
 
-const domainOf = (url) => {
-  try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return null; }
-};
-
-const igHandle = (url) => {
-  const m = url?.match(/instagram\.com\/([A-Za-z0-9._]+)/i);
-  const h = m?.[1]?.toLowerCase();
-  return h && !["p", "reel", "explore", "accounts", "about", "stories"].includes(h) ? h : null;
-};
-
-const fbPage = (url) => {
-  const m = url?.match(/facebook\.com\/([A-Za-z0-9._-]+)/i);
-  const h = m?.[1]?.toLowerCase();
-  return h && !["sharer", "sharer.php", "share", "tr", "plugins", "dialog", "events", "groups", "watch", "login", "policies"].includes(h)
-    ? h : null;
-};
-
-function buildKey(c) {
-  return (
-    (c.website_domain && `d:${c.website_domain}`) ||
-    (c.phone_normalized && `p:${c.phone_normalized}`) ||
-    (igHandle(c.instagram) && `i:${igHandle(c.instagram)}`) ||
-    (fbPage(c.facebook) && `f:${fbPage(c.facebook)}`) ||
-    `n:${c.normalized_name}:${(c.city || "").toLowerCase()}`
-  );
-}
-
-// ---------- Fonti ----------
-const RELEVANT = /animat|animazion|feste|festa|compleann|mascott|baby ?dance|bambin/i;
-
-// Ricerca web tramite Brave Search API (opzionale: richiede BRAVE_SEARCH_API_KEY)
-async function searchWeb(query) {
-  const key = process.env.BRAVE_SEARCH_API_KEY;
-  if (!key) return [];
-  const text = await fetchText(
-    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&country=it&search_lang=it&count=20`,
-    { headers: { "X-Subscription-Token": key, Accept: "application/json" } }
-  );
-  return (JSON.parse(text).web?.results || [])
-    .map((r) => ({ title: r.title || "", url: r.url, snippet: (r.description || "").replace(/<[^>]+>/g, "") }))
-    .filter((r) => RELEVANT.test(`${r.title} ${r.snippet} ${r.url}`));
-}
-
-async function searchOverpass() {
-  const query = `[out:json][timeout:60];
-area["ISO3166-2"="IT-52"]->.a;
-(nwr["shop"="party"](area.a);
- nwr["amenity"="events_venue"]["name"~"animazion|animator",i](area.a);
- nwr["name"~"animazion|animatori",i]["website"](area.a););
-out tags center 200;`;
-  let text;
-  let lastError;
-  for (const endpoint of [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter"
-  ]) {
+    let url;
     try {
-      text = await fetchText(endpoint, {
-        method: "POST",
-        body: "data=" + encodeURIComponent(query),
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        timeout: 90000
-      });
-      break;
-    } catch (e) { lastError = e; }
-  }
-  if (!text) throw lastError;
-  return JSON.parse(text).elements
-    .filter((e) => e.tags?.name)
-    .map((e) => ({
-      name: e.tags.name,
-      website: e.tags.website || e.tags["contact:website"],
-      phone: e.tags.phone || e.tags["contact:phone"] || e.tags["contact:mobile"],
-      facebook: e.tags["contact:facebook"],
-      instagram: e.tags["contact:instagram"],
-      email: e.tags.email || e.tags["contact:email"],
-      city: e.tags["addr:city"],
-      source: "osm",
-      source_url: `https://www.openstreetmap.org/${e.type}/${e.id}`
-    }));
-}
-
-// ---------- Arricchimento ----------
-async function enrich(c) {
-  if (!c.website) return c;
-  const pages = [c.website];
-  const contactPaths = ["contatti", "contact", "chi-siamo"];
-  const seen = new Set();
-  let text = "";
-  for (let i = 0; i < pages.length && i < 3; i++) {
-    let html;
-    try { html = await fetchText(pages[i], { timeout: 12000 }); } catch { continue; }
-    const $ = cheerio.load(html);
-    if (i === 0) {
-      c.description ||= ($('meta[name="description"]').attr("content") || "").trim().slice(0, 400);
-      $("a[href]").each((_, a) => {
-        const h = $(a).attr("href") || "";
-        if (/contatt|contact|chi-siamo/i.test(h) && pages.length < 3) {
-          try { const u = new URL(h, c.website).href; if (domainOf(u) === domainOf(c.website) && !pages.includes(u)) pages.push(u); } catch {}
-        }
-      });
-      if (pages.length === 1) {
-        for (const p of contactPaths) { try { pages.push(new URL(p, c.website).href); } catch {} }
-      }
+      url = new URL(source.url);
+    } catch {
+      throw new Error(`Fonte ${index + 1} (${source.name}): URL non valido.`);
     }
-    $("a[href]").each((_, a) => {
-      const h = $(a).attr("href") || "";
-      if (!c.facebook && fbPage(h)) c.facebook = h.split("?")[0];
-      if (!c.instagram && igHandle(h)) c.instagram = h.split("?")[0];
-      if (!c.phone && /^tel:/i.test(h)) c.phone = decodeURIComponent(h.slice(4));
-      if (!c.email && /^mailto:/i.test(h)) c.email = h.slice(7).split("?")[0];
-    });
-    $("script,style,noscript").remove();
-    const body = $("body").text().replace(/\s+/g, " ");
-    text += " " + body.slice(0, 6000);
-    if (!c.phone) {
-      const m = body.match(/(?:\+39[\s.]?)?\b3\d{2}[\s.]?\d{6,7}\b|\b0\d{1,3}[\s.\/]?\d{5,8}\b/);
-      if (m) c.phone = m[0].trim();
+
+    if (url.protocol !== "https:") {
+      throw new Error(`Fonte ${index + 1} (${source.name}): è richiesto HTTPS.`);
     }
-    seen.add(pages[i]);
-    await sleep(300);
-  }
-  c._text = text;
-  return c;
-}
 
-function assignTags(c) {
-  const hay = [c.name, c.description, c.snippet, c._text].filter(Boolean).join(" ");
-  const tags = TAG_RULES.filter(([, re]) => re.test(hay)).map(([t]) => t);
-  if (!tags.length) tags.push("animazione");
-  if (c.city) tags.push(`zona-${c.city.toLowerCase().replace(/\s+/g, "-")}`);
-  return [...new Set(tags)];
-}
-
-function detectCity(c, fallback) {
-  const hay = `${c.name} ${c.description || ""} ${c.snippet || ""}`.toLowerCase();
-  const hit = CITIES.find(([n]) => hay.includes(n.toLowerCase()));
-  return c.city || hit?.[0] || fallback?.[0] || null;
-}
-
-// ---------- Main ----------
-async function main() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!DRY_RUN && (!url || !key)) throw new Error("SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY richiesti.");
-  const supabase = !DRY_RUN || (url && key) ? createClient(url, key) : null;
-
-  // Chiavi già note: candidati + providers esistenti
-  const known = { domains: new Set(), phones: new Set(), ig: new Set(), fb: new Set(), keys: new Set() };
-  const addKnown = (r) => {
-    const d = domainOf(r.website); if (d) known.domains.add(d);
-    const p = normalizePhone(r.phone); if (p) known.phones.add(p);
-    const i = igHandle(r.instagram || r.social_url); if (i) known.ig.add(i);
-    const f = fbPage(r.facebook || r.social_url); if (f) known.fb.add(f);
-    if (r.dedupe_key) known.keys.add(r.dedupe_key);
-  };
-  const loadAll = async (table, cols) => {
-    if (!supabase) return;
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from(table).select(cols).range(from, from + 999);
-      if (error) { console.warn(`Lettura ${table} fallita: ${error.message}`); return; }
-      data.forEach(addKnown);
-      if (data.length < 1000) return;
+    if (source.coverageArea !== undefined && typeof source.coverageArea !== "string") {
+      throw new Error(`Fonte ${index + 1} (${source.name}): coverageArea deve essere testo.`);
     }
-  };
-  await loadAll("animators_candidates", "website,phone,instagram,facebook,dedupe_key");
-  await loadAll("providers", "website,phone,social_url");
 
-  const isKnown = (c) =>
-    (c.website_domain && known.domains.has(c.website_domain)) ||
-    (c.phone_normalized && known.phones.has(c.phone_normalized)) ||
-    (igHandle(c.instagram) && known.ig.has(igHandle(c.instagram))) ||
-    (fbPage(c.facebook) && known.fb.has(fbPage(c.facebook))) ||
-    known.keys.has(c.dedupe_key);
-
-  const raw = [];
-  const errors = [];
-  try { raw.push(...(await searchOverpass())); } catch (e) { errors.push(`Overpass: ${e.message}`); }
-
-  if (!process.env.BRAVE_SEARCH_API_KEY) errors.push("BRAVE_SEARCH_API_KEY non impostata: ricerca web saltata (solo OSM).");
-  const queries = !process.env.BRAVE_SEARCH_API_KEY ? [] : CITIES.flatMap(([city]) => [
-    `animatori feste bambini ${city}`,
-    `animazione compleanno bambini ${city} sito`
-  ]);
-  for (const q of queries) {
-    try {
-      const city = CITIES.find(([n]) => q.endsWith(n));
-      for (const r of await searchWeb(q)) {
-        const d = domainOf(r.url);
-        if (!d || BLOCKED_DOMAINS.some((b) => d.includes(b))) continue;
-        raw.push({
-          name: r.title.split(/[|\-–—·]/)[0].trim() || d,
-          website: new URL(r.url).origin,
-          snippet: r.snippet,
-          city: city?.[0],
-          province: city?.[1],
-          source: "web-search",
-          source_url: r.url
-        });
-      }
-    } catch (e) { errors.push(`Ricerca "${q}": ${e.message}`); }
-    await sleep(1500);
-  }
-
-  const stats = { found: raw.length, duplicates: 0, inserted: 0, failed: 0 };
-  const fresh = [];
-  const batchKeys = new Set();
-  for (const base of raw) {
-    if (fresh.length >= MAX_NEW) break;
-    const c = {
-      ...base,
-      website_domain: domainOf(base.website),
-      normalized_name: normalizeName(base.name)
+    return {
+      name: source.name.trim(),
+      url: url.toString(),
+      coverageArea: source.coverageArea?.trim() || null
     };
-    if (!c.normalized_name) continue;
-    c.phone_normalized = normalizePhone(c.phone);
-    c.dedupe_key = buildKey(c);
-    if (isKnown(c) || batchKeys.has(c.dedupe_key)) { stats.duplicates++; continue; }
-    batchKeys.add(c.dedupe_key);
-    await enrich(c);
-    // dopo l'arricchimento ricontrolla i duplicati con i nuovi contatti
-    c.phone_normalized = normalizePhone(c.phone);
-    c.dedupe_key = buildKey(c);
-    if (isKnown(c)) { stats.duplicates++; continue; }
-    c.city = detectCity(c);
-    c.tags = assignTags(c);
-    fresh.push(c);
+  });
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it-IT")
+    .replace(/\b(animazione|animatori|animatore|feste|bambini|srl|snc|asd|di|e|il|la|per)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizePhone(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("0039")) return digits.slice(4);
+  if (digits.startsWith("39") && digits.length > 10) return digits.slice(2);
+  return digits.length >= 8 && digits.length <= 11 ? digits : null;
+}
+
+function normalizedUrl(value) {
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    if (url.username || url.password) return null;
+    url.hash = "";
+    if (isHost(url.hostname.toLowerCase(), SOCIAL_HOSTS.facebook)
+      && /\/profile\.php$/i.test(url.pathname)) {
+      const id = url.searchParams.get("id");
+      url.search = "";
+      if (id) url.searchParams.set("id", id);
+    } else {
+      url.search = "";
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function hostname(value) {
+  return normalizedUrl(value)?.hostname.toLowerCase().replace(/^www\./, "") ?? null;
+}
+
+function isHost(host, allowedHosts) {
+  return Boolean(host && allowedHosts.some(
+    (allowed) => host === allowed || host.endsWith(`.${allowed}`)
+  ));
+}
+
+function isBlockedHost(host) {
+  return BLOCKED_HOSTS.some((blocked) => isHost(host, [blocked]));
+}
+
+function socialProfileKey(value, platform) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (!["http:", "https:"].includes(url.protocol)
+    || url.username
+    || url.password
+    || !isHost(url.hostname.toLowerCase(), SOCIAL_HOSTS[platform])) {
+    return null;
   }
 
-  const rows = fresh.map((c) => ({
-    name: c.name.slice(0, 200),
-    normalized_name: c.normalized_name,
-    website: c.website || null,
-    website_domain: c.website_domain || null,
-    phone: c.phone || null,
-    phone_normalized: c.phone_normalized,
-    facebook: c.facebook || null,
-    instagram: c.instagram || null,
-    email: c.email || null,
-    city: c.city || null,
-    province: c.province || null,
-    description: c.description || c.snippet || null,
-    tags: c.tags,
-    source: c.source,
-    source_url: c.source_url || null,
-    dedupe_key: c.dedupe_key,
-    status: "pending"
+  const segments = url.pathname.split("/").filter(Boolean).map((segment) => {
+    try {
+      return decodeURIComponent(segment).toLowerCase();
+    } catch {
+      return segment.toLowerCase();
+    }
+  });
+  if (platform === "facebook") {
+    const first = segments[0];
+    if (first === "profile.php") {
+      const id = url.searchParams.get("id");
+      return id ? `facebook:id:${id.toLowerCase()}` : null;
+    }
+    if (first === "pages" && segments[1]) {
+      return segments[2]
+        ? `facebook:id:${segments[2]}`
+        : `facebook:${segments[1]}`;
+    }
+    if (first === "people" && segments.length > 2) {
+      return `facebook:id:${segments[2]}`;
+    }
+  }
+
+  const segment = segments[0];
+  const excluded = platform === "facebook"
+    ? new Set(["groups", "events", "watch", "share", "sharer", "login", "plugins"])
+    : new Set(["p", "reel", "reels", "explore", "accounts", "stories"]);
+  return segment && !excluded.has(segment) ? `${platform}:${segment}` : null;
+}
+
+function namesMatch(left, right) {
+  const first = normalizeText(left);
+  const second = normalizeText(right);
+  return Boolean(first && second && first === second);
+}
+
+function candidatesMatch(first, second) {
+  if (namesMatch(first.name, second.name)) return true;
+
+  const firstPhone = normalizePhone(first.phone ?? first.normalized_phone);
+  const secondPhone = normalizePhone(second.phone ?? second.normalized_phone);
+  if (firstPhone && secondPhone && firstPhone === secondPhone) return true;
+
+  const firstWebsite = hostname(first.website);
+  const secondWebsite = hostname(second.website);
+  if (firstWebsite && secondWebsite && firstWebsite === secondWebsite) return true;
+
+  const firstFacebook = socialProfileKey(first.facebook_url, "facebook");
+  const secondFacebook = socialProfileKey(second.facebook_url, "facebook");
+  return Boolean(firstFacebook && secondFacebook && firstFacebook === secondFacebook);
+}
+
+function getQualityScore(candidate) {
+  return (candidate.phone ? 40 : 0)
+    + (candidate.website ? 30 : 0)
+    + (candidate.facebook_url ? 15 : 0)
+    + (candidate.instagram_url ? 15 : 0);
+}
+
+function getMissingFields(candidate) {
+  return [
+    ["phone", candidate.phone],
+    ["website", candidate.website],
+    ["facebook_url", candidate.facebook_url],
+    ["instagram_url", candidate.instagram_url],
+    ["city", candidate.city],
+    ["province", candidate.province],
+    ["services", candidate.services.length > 0],
+    ["coverage_area", candidate.coverage_area]
+  ]
+    .filter(([, value]) => !value)
+    .map(([field]) => field);
+}
+
+function isPrivateIp(address) {
+  const version = isIP(address);
+  if (version === 4) {
+    const [a, b] = address.split(".").map(Number);
+    return a === 0 || a === 10 || a === 127 || a >= 224
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168);
+  }
+  if (version === 6) {
+    const normalized = address.toLowerCase();
+    return normalized === "::"
+      || normalized === "::1"
+      || normalized.startsWith("fc")
+      || normalized.startsWith("fd")
+      || /^fe[89ab]/.test(normalized)
+      || normalized.startsWith("::ffff:");
+  }
+  return true;
+}
+
+async function assertPublicUrl(value) {
+  const url = normalizedUrl(value);
+  if (!url || url.protocol !== "https:") {
+    throw new Error("URL di origine non HTTPS o non valido.");
+  }
+
+  const host = url.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) {
+    throw new Error("Host locale non consentito.");
+  }
+
+  const addresses = isIP(host)
+    ? [{ address: host }]
+    : await lookup(host, { all: true, verbatim: true });
+
+  if (!addresses.length || addresses.some(({ address }) => isPrivateIp(address))) {
+    throw new Error("Host di rete privata non consentito.");
+  }
+  return url;
+}
+
+async function fetchPublicHtml(value) {
+  let url = await assertPublicUrl(value);
+
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: {
+        "user-agent": USER_AGENT,
+        accept: "text/html,application/xhtml+xml"
+      }
+    });
+
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location || redirectCount === 3) {
+        throw new Error(`Redirect non valido o eccessivo da ${url.hostname}.`);
+      }
+      url = await assertPublicUrl(new URL(location, url).toString());
+      continue;
+    }
+
+    if (!response.ok) throw new Error(`HTTP ${response.status} da ${url.hostname}.`);
+    if (!(response.headers.get("content-type") ?? "").includes("text/html")) {
+      throw new Error(`La pagina ${url.hostname} non è HTML.`);
+    }
+    return { html: await response.text(), finalUrl: url.toString() };
+  }
+
+  throw new Error("Troppi redirect durante il caricamento della pagina.");
+}
+
+function findJsonLdObjects(value, output = []) {
+  if (!value) return output;
+  if (Array.isArray(value)) {
+    for (const item of value) findJsonLdObjects(item, output);
+  } else if (typeof value === "object") {
+    output.push(value);
+    if (value["@graph"]) findJsonLdObjects(value["@graph"], output);
+  }
+  return output;
+}
+
+function extractBusinessData($) {
+  const objects = [];
+  $('script[type="application/ld+json"]').each((_, script) => {
+    try {
+      findJsonLdObjects(JSON.parse($(script).text()), objects);
+    } catch (error) {
+      console.warn(`JSON-LD non valido ignorato: ${error.message}`);
+    }
+  });
+
+  const business = objects.find((item) => {
+    const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [];
+    return item.name
+      && item.address
+      && sameAs.some((value) =>
+        socialProfileKey(value, "facebook") || socialProfileKey(value, "instagram")
+      );
+  }) ?? {};
+  const address = Array.isArray(business.address) ? business.address[0] : business.address;
+  const provinceText = String(address?.addressRegion ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+\(.*\)$/, "");
+  const province = PROVINCES.get(provinceText) ?? null;
+  const city = typeof address?.addressLocality === "string"
+    ? address.addressLocality.trim() || null
+    : null;
+
+  return {
+    name: typeof business.name === "string" ? business.name.trim() : null,
+    phone: typeof business.telephone === "string" ? business.telephone.trim() : null,
+    city,
+    province,
+    sameAs: Array.isArray(business.sameAs) ? business.sameAs : []
+  };
+}
+
+function extractPhone(text) {
+  const matches = text.match(
+    /(?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10}/g
+  ) ?? [];
+  return matches.map(normalizePhone).find(Boolean) ?? null;
+}
+
+function cleanName(value) {
+  return String(value ?? "")
+    .replace(/\s*[|–—-]\s*(sito ufficiale|facebook|instagram).*$/i, "")
+    .replace(/\s*[|–—-]\s*(animazione|animatori|feste per bambini).*$/i, "")
+    .trim();
+}
+
+function extractSocialLinks($, businessSameAs = []) {
+  const links = [...businessSameAs];
+  $("a[href]").each((_, anchor) => links.push($(anchor).attr("href")));
+
+  const result = { facebook_url: null, instagram_url: null };
+  for (const link of links) {
+    const url = normalizedUrl(link ?? "");
+    if (!url) continue;
+
+    const host = url.hostname.toLowerCase();
+    if (!result.facebook_url && isHost(host, SOCIAL_HOSTS.facebook)) {
+      result.facebook_url = url.toString();
+    }
+    if (!result.instagram_url && isHost(host, SOCIAL_HOSTS.instagram)) {
+      result.instagram_url = url.toString();
+    }
+  }
+  return result;
+}
+
+function extractServices(text) {
+  return SERVICE_TERMS
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([service]) => service);
+}
+
+function emptyPage() {
+  return cheerio.load("<html><body></body></html>");
+}
+
+async function buildCandidate({ result, location }) {
+  const source = normalizedUrl(result.url);
+  if (!source || isBlockedHost(source.hostname.toLowerCase())) return null;
+
+  const sourceHost = source.hostname.toLowerCase();
+  const fromFacebook = isHost(sourceHost, SOCIAL_HOSTS.facebook);
+  const fromInstagram = isHost(sourceHost, SOCIAL_HOSTS.instagram);
+  const website = !fromFacebook && !fromInstagram ? source.origin : null;
+  const sourceUrl = source.toString();
+  let $ = emptyPage();
+  let finalSourceUrl = sourceUrl;
+
+  if (website || fromFacebook || fromInstagram) {
+    try {
+      const fetched = await fetchPublicHtml(sourceUrl);
+      $ = cheerio.load(fetched.html);
+      finalSourceUrl = fetched.finalUrl;
+    } catch (error) {
+      console.warn(`Pagina candidata non estratta (${source.hostname}): ${error.message}`);
+    }
+  }
+
+  const business = extractBusinessData($);
+  const title = result.title
+    || business.name
+    || $("h1").first().text().trim()
+    || $('meta[property="og:title"]').attr("content")?.trim()
+    || $("title").text().trim()
+    || "";
+  const name = cleanName(title);
+  if (name.length < 3) return null;
+
+  $("script,style,noscript").remove();
+  const pageText = $("body").text().replace(/\s+/g, " ");
+  const searchText = [
+    result.title,
+    $('meta[property="og:description"]').attr("content"),
+    $('meta[name="description"]').attr("content"),
+    pageText
+  ].filter(Boolean).join(" ");
+  const social = extractSocialLinks($, business.sameAs);
+
+  if (fromFacebook) social.facebook_url = sourceUrl;
+  if (fromInstagram) social.instagram_url = sourceUrl;
+
+  const rawPhone = business.phone || extractPhone(searchText);
+  const normalizedPhone = normalizePhone(rawPhone);
+  const services = extractServices(searchText);
+  const fieldSources = { name: finalSourceUrl };
+  if (normalizedPhone) fieldSources.phone = finalSourceUrl;
+  if (website) fieldSources.website = finalSourceUrl;
+  if (social.facebook_url) fieldSources.facebook_url = finalSourceUrl;
+  if (social.instagram_url) fieldSources.instagram_url = finalSourceUrl;
+  if (business.city && business.province) fieldSources.city = finalSourceUrl;
+  if (business.city && business.province) fieldSources.province = finalSourceUrl;
+  if (services.length) fieldSources.services = finalSourceUrl;
+
+  const candidate = {
+    name,
+    phone: normalizedPhone ? `+39${normalizedPhone}` : null,
+    website,
+    facebook_url: social.facebook_url,
+    instagram_url: social.instagram_url,
+    city: business.city && business.province ? business.city : null,
+    province: business.city && business.province ? business.province : null,
+    services,
+    coverage_area: location || null,
+    source_urls: [sourceUrl],
+    field_sources: fieldSources,
+    discovery_locations: location ? [location] : [],
+    status: "pending_review"
+  };
+  candidate.normalized_name = normalizeText(candidate.name);
+  candidate.normalized_phone = normalizePhone(candidate.phone);
+  candidate.website_domain = hostname(candidate.website);
+  candidate.quality_score = getQualityScore(candidate);
+  candidate.missing_fields = getMissingFields(candidate);
+  return candidate;
+}
+
+function mergeCandidates(existing, incoming) {
+  const merged = { ...existing };
+  for (const field of [
+    "phone", "normalized_phone", "website", "website_domain", "facebook_url",
+    "instagram_url", "city", "province"
+  ]) {
+    if (!merged[field] && incoming[field]) merged[field] = incoming[field];
+  }
+
+  merged.services = [...new Set([...(merged.services ?? []), ...incoming.services])];
+  merged.source_urls = [...new Set([
+    ...(merged.source_urls ?? []),
+    ...incoming.source_urls
+  ])];
+  merged.discovery_locations = [...new Set([
+    ...(merged.discovery_locations ?? []),
+    ...incoming.discovery_locations
+  ])];
+  merged.field_sources = { ...(merged.field_sources ?? {}), ...incoming.field_sources };
+  merged.coverage_area = [...new Set([
+    ...(merged.coverage_area ?? "").split(";").map((value) => value.trim()).filter(Boolean),
+    incoming.coverage_area
+  ].filter(Boolean))].join("; ") || null;
+  merged.quality_score = getQualityScore(merged);
+  merged.missing_fields = getMissingFields(merged);
+  return merged;
+}
+
+function mergeDiscoveryResults(results) {
+  const candidates = [];
+  for (const incoming of results) {
+    const existing = candidates.find((candidate) => candidatesMatch(candidate, incoming));
+    if (existing) Object.assign(existing, mergeCandidates(existing, incoming));
+    else candidates.push(incoming);
+  }
+  return candidates;
+}
+
+async function loadAll(supabase, table, columns, filters = {}) {
+  const rows = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    let query = supabase
+      .from(table)
+      .select(columns)
+      .range(offset, offset + PAGE_SIZE - 1);
+    for (const [field, value] of Object.entries(filters)) {
+      query = query.eq(field, value);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      const readError = new Error(`Lettura ${table}: ${error.message}`);
+      readError.code = error.code;
+      throw readError;
+    }
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
+function providerToCandidate(provider) {
+  const socials = String(provider.social_url ?? "")
+    .split(";")
+    .map((value) => normalizedUrl(value.trim()))
+    .filter(Boolean);
+
+  return {
+    ...provider,
+    facebook_url: socials.find((url) =>
+      isHost(url.hostname.toLowerCase(), SOCIAL_HOSTS.facebook)
+    )?.toString() ?? null,
+    instagram_url: socials.find((url) =>
+      isHost(url.hostname.toLowerCase(), SOCIAL_HOSTS.instagram)
+    )?.toString() ?? null
+  };
+}
+
+function planCandidateWrites(discovered, providers, storedCandidates) {
+  const plan = [];
+  let providerDuplicates = 0;
+  const normalizedProviders = providers.map(providerToCandidate);
+  for (const candidate of discovered) {
+    const providerMatch = normalizedProviders.find((provider) =>
+      candidatesMatch(candidate, provider)
+    );
+    if (providerMatch) {
+      providerDuplicates += 1;
+      continue;
+    }
+
+    const candidateMatches = storedCandidates.filter((stored) =>
+      candidatesMatch(candidate, stored)
+    );
+    if (candidateMatches.length > 1) {
+      continue;
+    }
+
+    if (candidateMatches.length === 1) {
+      const stored = candidateMatches[0];
+      if (stored.status !== "pending_review") continue;
+
+      plan.push({
+        action: "update",
+        stored,
+        candidate: mergeCandidates(stored, candidate)
+      });
+      continue;
+    }
+
+    plan.push({ action: "insert", candidate });
+  }
+
+  return { plan, providerDuplicates };
+}
+
+async function saveCandidates(supabase, plan, storedCandidates) {
+  const saved = [];
+  for (const entry of plan) {
+    const now = new Date().toISOString();
+    if (entry.action === "update") {
+      const { stored, candidate: merged } = entry;
+      const { error } = await supabase
+        .from("animator_candidates")
+        .update({
+          phone: merged.phone,
+          normalized_phone: merged.normalized_phone,
+          website: merged.website,
+          website_domain: merged.website_domain,
+          facebook_url: merged.facebook_url,
+          instagram_url: merged.instagram_url,
+          city: merged.city,
+          province: merged.province,
+          services: merged.services,
+          coverage_area: merged.coverage_area,
+          source_urls: merged.source_urls,
+          field_sources: merged.field_sources,
+          missing_fields: merged.missing_fields,
+          quality_score: merged.quality_score,
+          discovery_locations: merged.discovery_locations,
+          discovery_run_id: RUN_ID,
+          updated_at: now,
+          last_seen_at: now
+        })
+        .eq("id", stored.id)
+        .eq("status", "pending_review");
+
+      if (error) throw new Error(`Aggiornamento candidato ${stored.name}: ${error.message}`);
+      Object.assign(stored, merged, { updated_at: now, last_seen_at: now });
+      saved.push(merged);
+      continue;
+    }
+
+    const { candidate } = entry;
+    const row = {
+      ...candidate,
+      discovery_run_id: RUN_ID,
+      approved_provider_id: null,
+      created_at: now,
+      updated_at: now,
+      last_seen_at: now
+    };
+    const { error } = await supabase.from("animator_candidates").insert(row);
+    if (error) throw new Error(`Inserimento candidato ${candidate.name}: ${error.message}`);
+
+    storedCandidates.push(row);
+    saved.push(row);
+  }
+
+  return saved;
+}
+
+function escapeMarkdown(value) {
+  return String(value ?? "-").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
+function createReport(candidates, statistics) {
+  return [
+    `# NUOVI CANDIDATI — ${new Date().toISOString().slice(0, 10)}`,
+    "",
+    `- Fonti analizzate: ${statistics.sourcesAnalyzed}`,
+    `- Candidati grezzi: ${statistics.rawCandidates}`,
+    `- Duplicati interni: ${statistics.internalDuplicates}`,
+    `- Già presenti in providers: ${statistics.providerDuplicates}`,
+    `- Nuovi candidati validi: ${candidates.length}`,
+    "",
+    "| Candidato | Punteggio | Dati mancanti | Fonte |",
+    "|---|---:|---|---|",
+    ...candidates.map((candidate) =>
+      `| ${escapeMarkdown(candidate.name)} | ${candidate.quality_score} | ` +
+      `${escapeMarkdown(candidate.missing_fields.join(", ") || "nessuno")} | ` +
+      `${escapeMarkdown(candidate.source_urls[0])} |`
+    )
+  ].join("\n");
+}
+
+async function main() {
+  if (process.argv.slice(2).some((argument) => argument !== "--dry-run")) {
+    throw new Error("Argomento non riconosciuto. Usa --dry-run per l'esecuzione di test.");
+  }
+
+  const sourceUrls = await loadSourceUrls();
+  const supabase = createClient(
+    requiredEnv("SUPABASE_URL"),
+    requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+
+  const rawResults = sourceUrls.map((source) => ({
+    result: { url: source.url, title: source.name, description: "" },
+    location: source.coverageArea ?? null
   }));
+  const searchErrors = [];
+  const discovered = [];
+  const batchSize = 5;
+  for (let offset = 0; offset < rawResults.length; offset += batchSize) {
+    const batch = rawResults.slice(offset, offset + batchSize);
+    const results = await Promise.all(batch.map(async (item) => {
+      try {
+        return await buildCandidate(item);
+      } catch (error) {
+        searchErrors.push(`${item.result.url}: ${error.message}`);
+        console.warn(`Risultato ignorato (${item.result.url}): ${error.message}`);
+        return null;
+      }
+    }));
+    discovered.push(...results.filter(Boolean));
+  }
+
+  const candidates = mergeDiscoveryResults(discovered);
+  const providers = await loadAll(
+    supabase,
+    "providers",
+    "id,name,phone,website,social_url",
+    { provider_kind: "feste", party_type: "animatore" }
+  );
+  let candidatesTableAvailable = true;
+  let storedCandidates;
+  try {
+    storedCandidates = await loadAll(
+      supabase,
+      "animator_candidates",
+      "id,name,normalized_name,phone,normalized_phone,website,website_domain," +
+        "facebook_url,instagram_url,city,province,services,coverage_area,source_urls," +
+        "field_sources,missing_fields,quality_score,discovery_locations," +
+        "discovery_run_id,status,approved_provider_id"
+    );
+  } catch (error) {
+    if (!DRY_RUN || error.code !== "PGRST205") throw error;
+    candidatesTableAvailable = false;
+    storedCandidates = [];
+    console.warn(
+      "Tabella animator_candidates non disponibile; deduplicazione contro i candidati salvati non verificata."
+    );
+  }
+  const { plan, providerDuplicates } = planCandidateWrites(
+    candidates,
+    providers,
+    storedCandidates
+  );
 
   if (DRY_RUN) {
-    console.log("DRY RUN: nessuna scrittura su database.");
-  } else if (rows.length) {
-    const { data, error } = await supabase
-      .from("animators_candidates")
-      .upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true })
-      .select("id");
-    if (error) { stats.failed = rows.length; errors.push(`Insert: ${error.message}`); }
-    else stats.inserted = data.length;
+    console.log("DRY RUN: nessuna scrittura su Supabase.");
+  } else {
+    await saveCandidates(supabase, plan, storedCandidates);
   }
 
-  const report = [
-    `# Report animatori - ${new Date().toISOString().slice(0, 10)}`,
-    "",
-    `- Risultati grezzi: ${stats.found}`,
-    `- Duplicati scartati: ${stats.duplicates}`,
-    `- Nuovi candidati ${DRY_RUN ? "(dry-run)" : "salvati"}: ${DRY_RUN ? rows.length : stats.inserted}`,
-    `- Errori: ${errors.length + stats.failed}`,
-    "",
-    "Stato: tutti i candidati sono `pending` in `animators_candidates` (nessuna pubblicazione).",
-    "",
-    "    | Nome | Città | Sito | Telefono | Facebook | Instagram | Tag |",
-    "|---|---|---|---|---|---|---|",
-    ...rows.map((r) =>
-      `| ${r.name.replace(/\|/g, "/")} | ${r.city || "-"} | ${r.website || "-"} | ${r.phone || "-"} | ${r.facebook || "-"} | ${r.instagram || "-"} | ${r.tags.join(", ")} |`),
-    ...(errors.length ? ["", "## Errori", ...errors.map((e) => `- ${e}`)] : [])
-  ].join("\n");
+  const newCandidates = plan
+    .filter(({ action }) => action === "insert")
+    .map(({ candidate }) => candidate);
+  const report = createReport(newCandidates, {
+    sourcesAnalyzed: sourceUrls.length - searchErrors.length,
+    rawCandidates: discovered.length,
+    internalDuplicates: discovered.length - candidates.length,
+    providerDuplicates
+  });
+  if (!DRY_RUN) {
+    await writeFile(REPORT_PATH, `${report}\n`, "utf8");
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      await writeFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`, { flag: "a" });
+    }
+  }
 
-  await writeFile(REPORT_PATH, report + "\n");
-  if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, report + "\n", { flag: "a" });
   console.log(report);
-  if (!raw.length && errors.length) process.exitCode = 1;
+  console.log(
+    `Fonti analizzate: ${sourceUrls.length - searchErrors.length}; ` +
+    `Candidati grezzi: ${discovered.length}; ` +
+    `Duplicati interni: ${discovered.length - candidates.length}; ` +
+    `Già presenti in providers: ${providerDuplicates}; ` +
+    `Nuovi candidati validi: ${newCandidates.length}.`
+  );
+  if (!candidatesTableAvailable) {
+    console.log("Nota: il conteggio non include possibili duplicati nella tabella animator_candidates.");
+  }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((error) => {
+  console.error(`Discovery Animatori fallita: ${error.message}`);
+  process.exitCode = 1;
+});
