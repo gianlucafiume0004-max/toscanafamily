@@ -1,16 +1,10 @@
 import { providerStreetAddress } from "../lib/providerLocation.js";
 import { providerServiceTags } from "../lib/providerServiceTags.js";
-import { formatProviderRatingSummary } from "../lib/providerReviews.js";
+import RatingSummary from "./reviews/RatingSummary.jsx";
 
 export default function ProviderFeatureCard({ provider, variant }) {
   const address = providerStreetAddress(provider);
   const serviceTags = providerServiceTags(provider.services);
-  const ratingSummary = variant === "animatori" && Number.isInteger(provider.reviewCount)
-    ? formatProviderRatingSummary({
-      count: provider.reviewCount,
-      averageRating: provider.averageRating
-    })
-    : null;
   const city = typeof provider.city === "string" ? provider.city.trim() : "";
   const description = typeof provider.description === "string"
     ? provider.description.trim()
@@ -25,7 +19,15 @@ export default function ProviderFeatureCard({ provider, variant }) {
       <h2 className="provider-feature-title">{provider.name}</h2>
       {address && <p className="provider-feature-address">📍 {address}</p>}
       {city && <p className="provider-feature-location">📍 {city}</p>}
-      {ratingSummary && <p className="provider-feature-rating">{ratingSummary}</p>}
+      {variant === "animatori" && (
+        <RatingSummary
+          className="provider-feature-rating"
+          stats={{
+            count: provider.reviewCount,
+            averageRating: provider.averageRating
+          }}
+        />
+      )}
       {serviceTags.length > 0 && (
         <ul className="provider-service-tags" aria-label="Servizi principali">
           {serviceTags.map(({ id, label }) => (

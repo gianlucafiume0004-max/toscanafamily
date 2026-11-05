@@ -41,14 +41,11 @@ export function hasReviewedProvider(providerId) {
   return readStorage(reviewedKey(providerId)) === "1";
 }
 
-// Stesso formato dei Parchi: "⭐ 4,8 · 12 valutazioni".
+// Riepilogo condiviso da Parchi e provider: "⭐ 4.8 (12)".
 export function formatRatingSummary(stats) {
-  if (!stats?.count) return "Nessuna valutazione";
-  const average = (stats.sum / stats.count).toLocaleString("it-IT", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1
-  });
-  return `⭐ ${average} · ${stats.count} ${stats.count === 1 ? "valutazione" : "valutazioni"}`;
+  if (!stats?.count) return "⭐ Nessuna recensione";
+  const average = stats.averageRating ?? stats.sum / stats.count;
+  return `⭐ ${average.toFixed(1)} (${stats.count})`;
 }
 
 /**
@@ -76,27 +73,6 @@ export function withProviderRatingStats(provider, stats) {
     reviewCount: stats?.count ?? 0,
     averageRating: stats?.averageRating ?? null
   };
-}
-
-/**
- * @param {number | null | undefined} averageRating
- * @returns {string}
- */
-export function formatProviderRating(averageRating) {
-  return averageRating == null
-    ? "—"
-    : averageRating.toLocaleString("it-IT", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1
-    });
-}
-
-/**
- * @param {Pick<ProviderRatingStats, "count" | "averageRating">} stats
- * @returns {string}
- */
-export function formatProviderRatingSummary(stats) {
-  return `⭐ ${formatProviderRating(stats.averageRating)} (${stats.count})`;
 }
 
 export async function fetchProviderRatingStats() {

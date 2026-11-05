@@ -3,10 +3,10 @@ import {
   REVIEW_COMMENT_MAX_LENGTH,
   fetchProviderRatingStat,
   fetchProviderReviews,
-  formatProviderRating,
   hasReviewedProvider,
   submitProviderReview
 } from "../../lib/providerReviews.js";
+import RatingSummary from "./RatingSummary.jsx";
 import StarRating from "./StarRating.jsx";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", { dateStyle: "medium" });
@@ -79,16 +79,7 @@ export default function ReviewsSection({
   return (
     <section className="provider-detail-section provider-reviews" aria-labelledby="provider-reviews-title">
       <h2 id="provider-reviews-title">⭐ Recensioni</h2>
-      <dl className="provider-detail-info-grid">
-        <div className="provider-detail-info-item">
-          <dt>Valutazione media</dt>
-          <dd>{stats.averageRating == null ? "Nessuna valutazione" : `⭐ ${formatProviderRating(stats.averageRating)}`}</dd>
-        </div>
-        <div className="provider-detail-info-item">
-          <dt>Numero recensioni</dt>
-          <dd>{stats.count}</dd>
-        </div>
-      </dl>
+      <RatingSummary stats={stats} />
 
       {alreadyReviewed ? (
         <p className="provider-review-note" role="status">Grazie! Hai già recensito questo profilo.</p>

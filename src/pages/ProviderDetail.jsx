@@ -12,9 +12,9 @@ import {
 import { providerServiceTags } from "../lib/providerServiceTags.js";
 import {
   fetchProviderRatingStat,
-  formatProviderRating,
   withProviderRatingStats
 } from "../lib/providerReviews.js";
+import RatingSummary from "../components/reviews/RatingSummary.jsx";
 import ReviewsSection from "../components/reviews/ReviewsSection.jsx";
 
 function asText(value) {
@@ -269,20 +269,12 @@ export default function ProviderDetail({ providerId }) {
             {!isAnimator && (
               <section className="provider-detail-section" aria-labelledby="provider-rating-title">
                 <h2 id="provider-rating-title">Valutazioni</h2>
-                <dl className="provider-detail-info-grid">
-                  <div className="provider-detail-info-item">
-                    <dt>Valutazione media</dt>
-                    <dd>
-                      {provider.averageRating == null
-                        ? "Nessuna valutazione"
-                        : `⭐ ${formatProviderRating(provider.averageRating)}`}
-                    </dd>
-                  </div>
-                  <div className="provider-detail-info-item">
-                    <dt>Numero recensioni</dt>
-                    <dd>{provider.reviewCount}</dd>
-                  </div>
-                </dl>
+                <RatingSummary
+                  stats={{
+                    count: provider.reviewCount,
+                    averageRating: provider.averageRating
+                  }}
+                />
               </section>
             )}
             {isAnimator && (
