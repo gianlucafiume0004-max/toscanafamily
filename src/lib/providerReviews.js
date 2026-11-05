@@ -5,6 +5,13 @@ const reviewedKey = (providerId) => `toscanafamily.reviewed.${providerId}`;
 
 export const REVIEW_COMMENT_MAX_LENGTH = 500;
 
+/**
+ * @typedef {Object} ProviderRatingStats
+ * @property {number} count
+ * @property {number} sum
+ * @property {number | null} averageRating
+ */
+
 function readStorage(key) {
   try {
     return window.localStorage.getItem(key);
@@ -44,8 +51,52 @@ export function formatRatingSummary(stats) {
   return `⭐ ${average} · ${stats.count} ${stats.count === 1 ? "valutazione" : "valutazioni"}`;
 }
 
+/**
+ * @param {{ review_count: number, average_rating: number | string }} row
+ * @returns {ProviderRatingStats}
+ */
 function statsFromRow({ review_count: count, average_rating: average }) {
-  return { count, sum: Number(average) * count };
+  const numericCount = Number(count);
+  const averageRating = numericCount > 0 ? Number(average) : null;
+  return {
+    count: numericCount,
+    sum: averageRating === null ? 0 : averageRating * numericCount,
+    averageRating
+  };
+}
+
+/**
+ * @param {Record<string, unknown> & { id: string }} provider
+ * @param {ProviderRatingStats | undefined} stats
+ * @returns {Record<string, unknown> & { id: string, reviewCount: number, averageRating: number | null }}
+ */
+export function withProviderRatingStats(provider, stats) {
+  return {
+    ...provider,
+    reviewCount: stats?.count ?? 0,
+    averageRating: stats?.averageRating ?? null
+  };
+}
+
+/**
+ * @param {number | null | undefined} averageRating
+ * @returns {string}
+ */
+export function formatProviderRating(averageRating) {
+  return averageRating == null
+    ? "—"
+    : averageRating.toLocaleString("it-IT", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    });
+}
+
+/**
+ * @param {Pick<ProviderRatingStats, "count" | "averageRating">} stats
+ * @returns {string}
+ */
+export function formatProviderRatingSummary(stats) {
+  return `⭐ ${formatProviderRating(stats.averageRating)} (${stats.count})`;
 }
 
 export async function fetchProviderRatingStats() {
@@ -64,7 +115,7 @@ export async function fetchProviderRatingStat(providerId) {
     .eq("provider_id", providerId)
     .maybeSingle();
   if (error) throw error;
-  return data ? statsFromRow(data) : { count: 0, sum: 0 };
+  return data ? statsFromRow(data) : { count: 0, sum: 0, averageRating: null };
 }
 
 export async function fetchProviderReviews(providerId, limit = 50) {

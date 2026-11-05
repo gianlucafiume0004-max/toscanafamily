@@ -10,6 +10,11 @@ import {
   providerNotesWithoutAddress
 } from "../lib/providerLocation.js";
 import { providerServiceTags } from "../lib/providerServiceTags.js";
+import {
+  fetchProviderRatingStat,
+  formatProviderRating,
+  withProviderRatingStats
+} from "../lib/providerReviews.js";
 import ReviewsSection from "../components/reviews/ReviewsSection.jsx";
 
 function asText(value) {
@@ -71,12 +76,14 @@ export default function ProviderDetail({ providerId }) {
   const [provider, setProvider] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [ratingError, setRatingError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadProvider() {
       const normalizedProviderId = asText(providerId);
+      setRatingError("");
       if (!normalizedProviderId) {
         setProvider(null);
         setLoading(false);
@@ -98,7 +105,15 @@ export default function ProviderDetail({ providerId }) {
       } else if (!data) {
         setError("Il profilo provider non è stato trovato.");
       } else {
-        setProvider(data);
+        try {
+          const stats = await fetchProviderRatingStat(data.id);
+          if (cancelled) return;
+          setProvider(withProviderRatingStats(data, stats));
+        } catch (statsError) {
+          if (cancelled) return;
+          setProvider(withProviderRatingStats(data, undefined));
+          setRatingError(`Impossibile caricare le valutazioni: ${statsError.message}`);
+        }
       }
       setLoading(false);
     }
@@ -152,6 +167,7 @@ export default function ProviderDetail({ providerId }) {
   const category = getProviderCategories(provider ?? {})
     .map(providerCategoryName)
     .join(" · ");
+  const isAnimator = getProviderCategories(provider ?? {}).includes("animatori");
   const contactActions = [
     ...telephones.map((href) => ({ label: "Chiama", href, className: "call", icon: "📞" })),
     whatsapp && { label: "WhatsApp", href: whatsapp, className: "whatsapp", icon: <WhatsAppIcon /> },
@@ -249,8 +265,33 @@ export default function ProviderDetail({ providerId }) {
                 </dl>
               </section>
             )}
-            {getProviderCategories(provider).includes("animatori") && (
-              <ReviewsSection providerId={provider.id} providerName={provider.name} />
+            {ratingError && <p className="provider-review-error" role="alert">{ratingError}</p>}
+            {!isAnimator && (
+              <section className="provider-detail-section" aria-labelledby="provider-rating-title">
+                <h2 id="provider-rating-title">Valutazioni</h2>
+                <dl className="provider-detail-info-grid">
+                  <div className="provider-detail-info-item">
+                    <dt>Valutazione media</dt>
+                    <dd>
+                      {provider.averageRating == null
+                        ? "Nessuna valutazione"
+                        : `⭐ ${formatProviderRating(provider.averageRating)}`}
+                    </dd>
+                  </div>
+                  <div className="provider-detail-info-item">
+                    <dt>Numero recensioni</dt>
+                    <dd>{provider.reviewCount}</dd>
+                  </div>
+                </dl>
+              </section>
+            )}
+            {isAnimator && (
+              <ReviewsSection
+                providerId={provider.id}
+                providerName={provider.name}
+                initialReviewCount={provider.reviewCount}
+                initialAverageRating={provider.averageRating}
+              />
             )}
           </div>
         </article>

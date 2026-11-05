@@ -3,17 +3,26 @@ import {
   REVIEW_COMMENT_MAX_LENGTH,
   fetchProviderRatingStat,
   fetchProviderReviews,
+  formatProviderRating,
   hasReviewedProvider,
   submitProviderReview
 } from "../../lib/providerReviews.js";
-import RatingSummary from "./RatingSummary.jsx";
 import StarRating from "./StarRating.jsx";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", { dateStyle: "medium" });
 
-export default function ReviewsSection({ providerId, providerName }) {
+export default function ReviewsSection({
+  providerId,
+  providerName,
+  initialReviewCount = 0,
+  initialAverageRating = null
+}) {
   const [reviews, setReviews] = useState([]);
-  const [stats, setStats] = useState({ count: 0, sum: 0 });
+  const [stats, setStats] = useState({
+    count: initialReviewCount,
+    sum: initialAverageRating == null ? 0 : initialAverageRating * initialReviewCount,
+    averageRating: initialAverageRating
+  });
   const [loadError, setLoadError] = useState("");
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
@@ -38,8 +47,13 @@ export default function ReviewsSection({ providerId, providerName }) {
 
   useEffect(() => {
     setAlreadyReviewed(hasReviewedProvider(providerId));
+    setStats({
+      count: initialReviewCount,
+      sum: initialAverageRating == null ? 0 : initialAverageRating * initialReviewCount,
+      averageRating: initialAverageRating
+    });
     loadReviews();
-  }, [providerId, loadReviews]);
+  }, [providerId, loadReviews, initialReviewCount, initialAverageRating]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -65,7 +79,16 @@ export default function ReviewsSection({ providerId, providerName }) {
   return (
     <section className="provider-detail-section provider-reviews" aria-labelledby="provider-reviews-title">
       <h2 id="provider-reviews-title">⭐ Recensioni</h2>
-      <RatingSummary stats={stats} />
+      <dl className="provider-detail-info-grid">
+        <div className="provider-detail-info-item">
+          <dt>Valutazione media</dt>
+          <dd>{stats.averageRating == null ? "Nessuna valutazione" : `⭐ ${formatProviderRating(stats.averageRating)}`}</dd>
+        </div>
+        <div className="provider-detail-info-item">
+          <dt>Numero recensioni</dt>
+          <dd>{stats.count}</dd>
+        </div>
+      </dl>
 
       {alreadyReviewed ? (
         <p className="provider-review-note" role="status">Grazie! Hai già recensito questo profilo.</p>

@@ -6,13 +6,14 @@ import {
 } from "../lib/providerCategories.js";
 import ProviderFeatureCard from "../components/ProviderFeatureCard.jsx";
 import useProviderRatingStats from "../hooks/useProviderRatingStats.js";
+import { withProviderRatingStats } from "../lib/providerReviews.js";
 
 function normalizeFilterValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
 export default function Activities() {
-  const providerRatingStats = useProviderRatingStats();
+  const { stats: providerRatingStats, error: providerRatingStatsError } = useProviderRatingStats();
   const [providers, setProviders] = useState([]);
   const [category, setCategory] = useState("");
   const [city, setCity] = useState("");
@@ -20,6 +21,12 @@ export default function Activities() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const providersWithRatingStats = useMemo(
+    () => providers.map((provider) =>
+      withProviderRatingStats(provider, providerRatingStats[provider.id])
+    ),
+    [providers, providerRatingStats]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -50,21 +57,21 @@ export default function Activities() {
   }, []);
 
   const categories = useMemo(
-    () => [...new Set(providers
+    () => [...new Set(providersWithRatingStats
       .flatMap(getProviderCategories)
       .filter(Boolean))]
       .sort((a, b) => providerCategoryName(a).localeCompare(providerCategoryName(b), "it")),
-    [providers]
+    [providersWithRatingStats]
   );
   const cities = useMemo(
-    () => [...new Set(providers.map((provider) => provider.city).filter(Boolean))]
+    () => [...new Set(providersWithRatingStats.map((provider) => provider.city).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, "it")),
-    [providers]
+    [providersWithRatingStats]
   );
   const filteredProviders = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("it-IT");
     const selectedCategory = normalizeFilterValue(category);
-    const results = providers
+    const results = providersWithRatingStats
       .filter((provider) => {
         const providerCategories = getProviderCategories(provider);
 
@@ -88,7 +95,7 @@ export default function Activities() {
         (a.name ?? "").localeCompare(b.name ?? "", "it"));
 
     return results;
-  }, [providers, category, city, premiumOnly, search]);
+  }, [providersWithRatingStats, category, city, premiumOnly, search]);
 
   return (
     <div className="activities-page">
@@ -146,6 +153,9 @@ export default function Activities() {
 
         {loading && <p className="activities-message" role="status">Caricamento attività…</p>}
         {!loading && error && <p className="activities-message error" role="alert">{error}</p>}
+        {!loading && providerRatingStatsError && (
+          <p className="activities-message error" role="alert">{providerRatingStatsError}</p>
+        )}
         {!loading && !error && filteredProviders.length === 0 && (
           <p className="activities-message">Nessuna attività trovata con i filtri selezionati.</p>
         )}
@@ -166,9 +176,6 @@ export default function Activities() {
                       key={provider.id}
                       provider={provider}
                       variant={featureCategory}
-                      ratingStats={featureCategory === "animatori"
-                        ? (providerRatingStats[provider.id] || { count: 0, sum: 0 })
-                        : undefined}
                     />
                   );
                 }

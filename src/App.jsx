@@ -6,6 +6,7 @@ import Parks, { isTargetProvince } from "./pages/Parks.jsx";
 import { getProviderCategories } from "./lib/providerCategories.js";
 import ProviderFeatureCard from "./components/ProviderFeatureCard.jsx";
 import useProviderRatingStats from "./hooks/useProviderRatingStats.js";
+import { withProviderRatingStats } from "./lib/providerReviews.js";
 
 const TABS = [
   { key: "parks", label: "Parchi", icon: "🌳" },
@@ -882,7 +883,7 @@ function getWhenDateRange(when, selectedDate) {
 }
 
 function HomeApp() {
-  const providerRatingStats = useProviderRatingStats();
+  const { stats: providerRatingStats, error: providerRatingStatsError } = useProviderRatingStats();
   const [active, setActive] = useState("parks");
   const [parks, setParks] = useState([]);
   const [events, setEvents] = useState([]);
@@ -897,6 +898,12 @@ function HomeApp() {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const providersWithRatingStats = useMemo(
+    () => providers.map((provider) =>
+      withProviderRatingStats(provider, providerRatingStats[provider.id])
+    ),
+    [providers, providerRatingStats]
+  );
 
   useEffect(() => {
     let timeoutId;
@@ -950,10 +957,10 @@ function HomeApp() {
   }, []);
 
   const providerCounts = useMemo(() => ({
-    animatori: providers.filter((item) => getProviderCategories(item).includes("animatori")).length,
-    sale_feste: providers.filter((item) => getProviderCategories(item).includes("sale_feste")).length,
-    play_center: providers.filter((item) => item.provider_kind === "play_center").length
-  }), [providers]);
+    animatori: providersWithRatingStats.filter((item) => getProviderCategories(item).includes("animatori")).length,
+    sale_feste: providersWithRatingStats.filter((item) => getProviderCategories(item).includes("sale_feste")).length,
+    play_center: providersWithRatingStats.filter((item) => item.provider_kind === "play_center").length
+  }), [providersWithRatingStats]);
 
   const filteredVisibleEvents = events.filter((event) => {
     const endsAt = eventEndDateTime(event);
@@ -972,7 +979,7 @@ function HomeApp() {
     ? parks
     : active === "events"
       ? filteredVisibleEvents
-      : providers.filter((item) => getProviderCategories(item).includes(active));
+      : providersWithRatingStats.filter((item) => getProviderCategories(item).includes(active));
 
   const cities = useMemo(() => {
     const values = currentItems
@@ -1277,6 +1284,7 @@ function HomeApp() {
         )}
         {loading && <div className="message loading">Caricamento delle migliori idee per la famiglia...</div>}
         {errors.map((error) => <div key={error} className="message error">{error}</div>)}
+        {providerRatingStatsError && <div className="message error" role="alert">{providerRatingStatsError}</div>}
         {!loading && active === "parks" && (
           <Parks parks={parks} hasError={errors.length > 0} />
         )}
@@ -1290,7 +1298,6 @@ function HomeApp() {
                   key={item.id}
                   item={item}
                   active={active}
-                  ratingStats={active === "animatori" ? (providerRatingStats[item.id] || { count: 0, sum: 0 }) : undefined}
                   onShowEventDetails={() => setSelectedEvent(item)}
                 />
               ))}
@@ -1323,7 +1330,7 @@ function HomeApp() {
   );
 }
 
-function Card({ item, active, ratingStats, onShowEventDetails }) {
+function Card({ item, active, onShowEventDetails }) {
   if (active === "events") {
     const ageColors = getEventAgeColors(item.age_range);
     const ageRange = formatEventAgeRange(item.age_range);
@@ -1361,7 +1368,6 @@ function Card({ item, active, ratingStats, onShowEventDetails }) {
       <ProviderFeatureCard
         provider={item}
         variant={active}
-        ratingStats={ratingStats}
       />
     );
   }
