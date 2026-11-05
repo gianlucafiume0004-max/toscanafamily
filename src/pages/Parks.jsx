@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import { supabase } from "../lib/supabase.js";
-import StarRating from "../components/reviews/StarRating.jsx";
 import RatingSummary from "../components/reviews/RatingSummary.jsx";
+import ParkReviewsSection from "../components/reviews/ParkReviewsSection.jsx";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
@@ -36,7 +36,6 @@ const parkServiceFields = [
 export default function Parks({ parks, hasError }) {
   const [city, setCity] = useState("");
   const [selectedPark, setSelectedPark] = useState(null);
-  const [parkRatings, setParkRatings] = useState({});
   const [parkRatingStats, setParkRatingStats] = useState({});
   const [parkServiceSelections, setParkServiceSelections] = useState({});
 
@@ -58,50 +57,18 @@ export default function Parks({ parks, hasError }) {
   );
   const mappedParks = filteredParks.filter(hasCoordinates);
 
-  async function ratePark(parkId, rating) {
-    setParkRatings((currentRatings) => ({
-      ...currentRatings,
-      [parkId]: rating
-    }));
-
-    try {
-      const { error } = await supabase
-        .from("park_ratings")
-        .insert({ park_id: parkId, rating });
-
-      if (error) {
-        console.error("Errore durante il salvataggio della valutazione del parco:", error);
-        return;
-      }
-
-      setParkRatingStats((currentStats) => {
-        const current = currentStats[parkId] || { sum: 0, count: 0 };
-
-        return {
-          ...currentStats,
-          [parkId]: {
-            sum: current.sum + rating,
-            count: current.count + 1
-          }
-        };
-      });
-    } catch (error) {
-      console.error("Errore durante il salvataggio della valutazione del parco:", error);
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
 
     async function loadParkRatingStats() {
       try {
-        const ratings = [];
+        const stats = {};
         const pageSize = 1000;
 
         for (let from = 0; ; from += pageSize) {
           const { data, error } = await supabase
-            .from("park_ratings")
-            .select("park_id, rating")
+            .from("park_review_stats")
+            .select("park_id, review_count, average_rating")
             .range(from, from + pageSize - 1);
 
           if (cancelled) return;
@@ -110,20 +77,19 @@ export default function Parks({ parks, hasError }) {
             return;
           }
 
-          ratings.push(...(data || []));
+          for (const { park_id: parkId, review_count: count, average_rating: average } of data || []) {
+            const reviewCount = Number(count);
+            const averageRating = Number(average);
+            stats[parkId] = {
+              count: reviewCount,
+              averageRating,
+              sum: averageRating * reviewCount
+            };
+          }
           if (!data || data.length < pageSize) break;
         }
 
-        const nextStats = ratings.reduce((stats, { park_id: parkId, rating }) => {
-          const current = stats[parkId] || { sum: 0, count: 0 };
-          stats[parkId] = {
-            sum: current.sum + rating,
-            count: current.count + 1
-          };
-          return stats;
-        }, {});
-
-        setParkRatingStats(nextStats);
+        setParkRatingStats(stats);
       } catch (error) {
         if (!cancelled) {
           console.error("Errore durante il caricamento delle valutazioni dei parchi:", error);
@@ -207,9 +173,7 @@ export default function Parks({ parks, hasError }) {
             <ParkCard
               key={park.id}
               park={park}
-              rating={parkRatings[park.id] || 0}
               ratingStats={parkRatingStats[park.id]}
-              onRate={(rating) => ratePark(park.id, rating)}
               onSelect={() => setSelectedPark(park)}
             />
           ))}
@@ -225,6 +189,7 @@ export default function Parks({ parks, hasError }) {
       {selectedPark && (
         <ParkDetails
           park={selectedPark}
+          onStatsChange={setParkRatingStats}
           serviceSelections={parkServiceSelections[selectedPark.id] || {}}
           onServiceSelectionChange={(field, value) => setParkServiceSelections((current) => ({
             ...current,
@@ -240,43 +205,26 @@ export default function Parks({ parks, hasError }) {
   );
 }
 
-function ParkCard({ park, rating, ratingStats, onRate, onSelect }) {
+function ParkCard({ park, ratingStats, onSelect }) {
   const visualType = getParkVisualType(park);
   const directions = cardDirectionsUrl(park);
 
   return (
-    <article
-      className={`content-card park-card park-card--${visualType} clickable`}
-      role="button"
-      tabIndex="0"
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-    >
+    <article className={`content-card park-card park-card--${visualType}`}>
       <div className="card-icon">{parkVisualIcons[visualType]}</div>
       <div className="card-body">
         <h3>{displayParkName(park)}</h3>
-        <StarRating
-          value={rating}
-          onChange={onRate}
-          label={`Valutazione di ${displayParkName(park)}`}
-        />
-        <RatingSummary stats={ratingStats} />
-        <p className="location">
-          📍 {park.comune || "Comune non disponibile"}{park.provincia ? ` · ${park.provincia}` : ""}
-        </p>
-        {park.indirizzo && <p className="location">🏠 {park.indirizzo}</p>}
+        <RatingSummary className="rating-summary-badge" stats={ratingStats} />
+        <div className="park-card-info">
+          <p className="location">
+            📍 {[park.comune || "Comune non disponibile", park.provincia].filter(Boolean).join(" · ")}
+          </p>
+          {park.indirizzo && <p className="location park-card-address">🏠 {park.indirizzo}</p>}
+        </div>
         <div className="card-actions">
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect();
-            }}
+            onClick={onSelect}
           >
             ℹ️ Tutte le info
           </button>
@@ -285,7 +233,6 @@ function ParkCard({ park, rating, ratingStats, onRate, onSelect }) {
               href={directions}
               target="_blank"
               rel="noreferrer"
-              onClick={(event) => event.stopPropagation()}
             >
               🚗 Portami qui
             </a>
@@ -330,7 +277,7 @@ function getParkVisualType(park) {
   return "other";
 }
 
-function ParkDetails({ park, serviceSelections, onServiceSelectionChange, onClose }) {
+function ParkDetails({ park, onStatsChange, serviceSelections, onServiceSelectionChange, onClose }) {
   useEffect(() => {
     function closeWithEscape(event) {
       if (event.key === "Escape") onClose();
@@ -448,6 +395,11 @@ function ParkDetails({ park, serviceSelections, onServiceSelectionChange, onClos
               ))}
           </div>
         </div>
+        <ParkReviewsSection
+          parkId={park.id}
+          parkName={displayParkName(park)}
+          onStatsChange={onStatsChange}
+        />
         <div className="modal-actions">
           {directions && (
             <a className="directions-button" href={directions} target="_blank" rel="noreferrer">

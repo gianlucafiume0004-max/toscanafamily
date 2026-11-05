@@ -110,8 +110,21 @@ article:hover { transform: translateY(-6px); box-shadow: 0 20px 42px rgba(35,82,
 .event-card .card-body h3,
 .event-card .card-body p { margin: 0; }
 .event-card .card-body h3 { overflow-wrap: anywhere; font-size: 1.1rem; line-height: 1.35; }
-.event-card .card-body .date,
-.event-card .card-body .location { overflow-wrap: anywhere; line-height: 1.5; }
+.event-card-info,
+.provider-feature-info,
+.park-card-info { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.event-card-info .date,
+.event-card-info .location,
+.park-card-info .location,
+.provider-feature-info .provider-feature-location {
+  margin: 0;
+  color: #547064;
+  font-weight: 750;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.park-card-info .park-card-address,
+.provider-feature-info .provider-feature-address { color: #24533d; }
 .event-card .event-age-badge {
   width: fit-content;
   max-width: 100%;
@@ -460,12 +473,41 @@ article.provider-feature-card--sale-feste { border-top-color: #7c3aed; }
 .provider-review-item { min-width: 0; border: 1px solid #e0ece6; border-radius: 14px; padding: 12px 14px; background: #fbfefc; }
 .provider-review-item p { margin: 6px 0 0; color: #3d4f47; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-line; }
 .provider-review-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; color: #5e6f68; font-size: .85rem; }
-.provider-review-stars { color: #b87400; font-size: 1.05rem; letter-spacing: 1px; }
-article .provider-review-field > span,
-article .provider-review-stars { padding: 0; border-radius: 0; background: transparent; }
-article .provider-review-field > span { color: #385448; font-size: .9rem; }
-article .provider-review-stars { color: #b87400; font-size: 1.05rem; }
+article .provider-review-field > span {
+  border-radius: 0;
+  padding: 0;
+  color: #385448;
+  background: transparent;
+  font-size: .9rem;
+}
+.park-reviews { margin: 10px 24px; padding: 18px; border: 1px solid #e0ece6; border-radius: 18px; background: #fbfefc; }
+.park-reviews h2 { margin: 0 0 12px; color: #24533d; font-size: 1.08rem; }
+.park-reviews > .rating-summary-badge { margin-top: 6px; }
+.park-reviews .provider-review-form { padding-top: 12px; border-top: 1px solid #e4eee8; }
+.park-rating { display: inline-flex; align-items: center; gap: 2px; min-height: 2.2rem; }
+.park-rating button { font-size: 2.1rem; text-shadow: 0 1px 0 rgba(71, 48, 0, .14); }
+.park-rating--readonly { font-size: 2.2rem; }
+.park-rating-star { position: relative; display: inline-block; line-height: 1; text-shadow: 0 1px 0 rgba(71, 48, 0, .14); }
+.park-rating-star-empty { color: #52645c; }
+.park-rating-star-fill { position: absolute; inset: 0 auto 0 0; overflow: hidden; color: #b87400; }
+.rating-summary-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  margin: 0;
+  border: 1px solid #d5e9dd;
+  border-radius: 999px;
+  padding: 6px 11px;
+  color: #285d43;
+  background: #edf8f1;
+  box-shadow: 0 2px 8px rgba(35,82,64,.08);
+  font-size: .9rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
 .provider-card-link:hover { text-decoration: underline; }
+.park-card .card-body { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
+.park-card .card-body h3 { margin: 0; }
 .provider-detail-page {
   min-height: 100vh;
   padding: 20px 16px 48px;
@@ -749,14 +791,15 @@ article .provider-review-stars { color: #b87400; font-size: 1.05rem; }
 }
 .events-shown-count { margin: 0 0 14px; color: #63756d; font-weight: 800; }
 .results-list .grid { margin-top: 0; }
-
 @media (max-width: 620px) {
   .details-grid { grid-template-columns: 1fr; padding: 18px 16px 8px; }
   .event-details-content { padding: 14px 16px 0; }
   .details-grid.event-details-grid { padding: 10px 0 0; }
   .modal-hero { padding: 28px 58px 24px 20px; }
   .modal-hero > span { font-size: 2.4rem; }
-  .park-notes { margin: 10px 16px; }
+  .park-notes, .park-reviews { margin: 10px 16px; }
+  .park-rating button { font-size: 1.95rem; }
+  .park-rating--readonly { font-size: 2rem; }
   .modal-actions { padding: 16px; }
   .modal-actions > * { flex: 1 1 100%; text-align: center; }
 }

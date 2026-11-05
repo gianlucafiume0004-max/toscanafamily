@@ -5,6 +5,8 @@ import ProviderDetail from "./pages/ProviderDetail.jsx";
 import Parks, { isTargetProvince } from "./pages/Parks.jsx";
 import { getProviderCategories } from "./lib/providerCategories.js";
 import ProviderFeatureCard from "./components/ProviderFeatureCard.jsx";
+import RatingSummary from "./components/reviews/RatingSummary.jsx";
+import StarRating from "./components/reviews/StarRating.jsx";
 import useProviderRatingStats from "./hooks/useProviderRatingStats.js";
 import { withProviderRatingStats } from "./lib/providerReviews.js";
 
@@ -1342,17 +1344,23 @@ function Card({ item, active, onShowEventDetails }) {
       >
         <div className="card-body">
           <h3>{item.title}</h3>
-          {isUsableEventText(item.starts_on) && (
-            <p className="date">📅 {formatEventDateTime(item.starts_on)}</p>
+          {(isUsableEventText(item.starts_on) ||
+            isUsableEventText(item.location) ||
+            isUsableEventText(item.city)) && (
+            <div className="event-card-info">
+              {isUsableEventText(item.starts_on) && (
+                <p className="date">📅 {formatEventDateTime(item.starts_on)}</p>
+              )}
+              {isUsableEventText(item.location) || isUsableEventText(item.city) ? (
+                <p className="location">
+                  📍 {[item.location, item.city]
+                    .filter(isUsableEventText)
+                    .filter((value, index, values) => values.indexOf(value) === index)
+                    .join(" · ")}
+                </p>
+              ) : null}
+            </div>
           )}
-          {isUsableEventText(item.location) || isUsableEventText(item.city) ? (
-            <p className="location">
-              📍 {[item.location, item.city]
-                .filter(isUsableEventText)
-                .filter((value, index, values) => values.indexOf(value) === index)
-                .join(" · ")}
-            </p>
-          ) : null}
           {ageRange && <p className="event-age-badge">{ageRange}</p>}
           <EventCostBadge event={item} />
           <div className="card-actions event-card-actions">
@@ -1379,6 +1387,21 @@ function Card({ item, active, onShowEventDetails }) {
       <div className="card-body">
         <h3><a className="provider-card-link" href={`/provider/${encodeURIComponent(item.id)}`}>{item.name}</a></h3>
         <p className="location">📍 {item.city} · {item.province}</p>
+        {active === "play_center" && (
+          <>
+            <StarRating
+              value={item.averageRating ?? 0}
+              label={`Valutazione di ${item.name}`}
+              readOnly
+            />
+            <RatingSummary
+              stats={{
+                count: item.reviewCount,
+                averageRating: item.averageRating
+              }}
+            />
+          </>
+        )}
         {item.services && <p className="description">{item.services}</p>}
         {item.hours && <p>🕒 {item.hours}</p>}
         {item.price && <p>💶 {item.price}</p>}
@@ -1737,11 +1760,7 @@ function formatEventDateTime(value) {
     month: "long",
     year: "numeric"
   }).format(date);
-  const containsTime = typeof value === "string" && /T\d{2}:\d{2}/.test(value);
-
-  return containsTime
-    ? `${dateText}, ${new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(date)}`
-    : dateText;
+  return dateText;
 }
 
 

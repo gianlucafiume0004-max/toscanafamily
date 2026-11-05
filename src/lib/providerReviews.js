@@ -41,11 +41,15 @@ export function hasReviewedProvider(providerId) {
   return readStorage(reviewedKey(providerId)) === "1";
 }
 
-// Riepilogo condiviso da Parchi e provider: "⭐ 4.8 (12)".
+// Riepilogo compatto condiviso da card Parchi e provider.
 export function formatRatingSummary(stats) {
   if (!stats?.count) return "⭐ Nessuna recensione";
   const average = stats.averageRating ?? stats.sum / stats.count;
-  return `⭐ ${average.toFixed(1)} (${stats.count})`;
+  const formattedAverage = average.toLocaleString("it-IT", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  });
+  return `⭐ ${formattedAverage} (${stats.count})`;
 }
 
 /**

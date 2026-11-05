@@ -79,6 +79,11 @@ export default function ReviewsSection({
   return (
     <section className="provider-detail-section provider-reviews" aria-labelledby="provider-reviews-title">
       <h2 id="provider-reviews-title">⭐ Recensioni</h2>
+      <StarRating
+        value={stats.averageRating ?? 0}
+        label={`Valutazione media di ${providerName}`}
+        readOnly
+      />
       <RatingSummary stats={stats} />
 
       {alreadyReviewed ? (
@@ -109,15 +114,16 @@ export default function ReviewsSection({
       )}
 
       {loadError && <p className="provider-review-error" role="alert">{loadError}</p>}
-      {!loadError && reviews.length === 0 && <p className="provider-review-note">Ancora nessuna recensione.</p>}
       {reviews.length > 0 && (
         <ul className="provider-review-list">
           {reviews.map((review) => (
             <li className="provider-review-item" key={review.id}>
               <div className="provider-review-meta">
-                <span className="provider-review-stars" aria-label={`${review.rating} stelle su 5`}>
-                  {"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}
-                </span>
+                <StarRating
+                  value={review.rating}
+                  label={`Valutazione recensione di ${providerName}`}
+                  readOnly
+                />
                 <time dateTime={review.created_at}>{dateFormatter.format(new Date(review.created_at))}</time>
               </div>
               {review.comment && <p>{review.comment}</p>}

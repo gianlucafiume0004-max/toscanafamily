@@ -15,6 +15,7 @@ import {
   withProviderRatingStats
 } from "../lib/providerReviews.js";
 import RatingSummary from "../components/reviews/RatingSummary.jsx";
+import StarRating from "../components/reviews/StarRating.jsx";
 import ReviewsSection from "../components/reviews/ReviewsSection.jsx";
 
 function asText(value) {
@@ -131,9 +132,9 @@ export default function ProviderDetail({ providerId }) {
   const telephones = phoneNumbers.map(phoneHref).filter(Boolean);
   const websiteValue = asText(provider?.website);
   const website = websiteHref(websiteValue);
-  const description = asText(provider?.description);
   const notes = providerNotesWithoutAddress(provider);
   const services = asText(provider?.services);
+  const coverageArea = asText(provider?.coverage_area);
   const serviceTags = providerServiceTags(provider?.services);
   const email = asText(provider?.email);
   const emailHref = email ? `mailto:${email}` : "";
@@ -168,6 +169,14 @@ export default function ProviderDetail({ providerId }) {
     .map(providerCategoryName)
     .join(" · ");
   const isAnimator = getProviderCategories(provider ?? {}).includes("animatori");
+  const description = asText(provider?.description) || (isAnimator
+    ? [
+        services,
+        coverageArea && `Opera nell’area indicata nel profilo: ${coverageArea}.`
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "");
   const contactActions = [
     ...telephones.map((href) => ({ label: "Chiama", href, className: "call", icon: "📞" })),
     whatsapp && { label: "WhatsApp", href: whatsapp, className: "whatsapp", icon: <WhatsAppIcon /> },
@@ -269,6 +278,11 @@ export default function ProviderDetail({ providerId }) {
             {!isAnimator && (
               <section className="provider-detail-section" aria-labelledby="provider-rating-title">
                 <h2 id="provider-rating-title">Valutazioni</h2>
+                <StarRating
+                  value={provider.averageRating ?? 0}
+                  label={`Valutazione di ${provider.name}`}
+                  readOnly
+                />
                 <RatingSummary
                   stats={{
                     count: provider.reviewCount,

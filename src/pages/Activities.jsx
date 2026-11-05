@@ -5,6 +5,8 @@ import {
   providerCategoryName
 } from "../lib/providerCategories.js";
 import ProviderFeatureCard from "../components/ProviderFeatureCard.jsx";
+import RatingSummary from "../components/reviews/RatingSummary.jsx";
+import StarRating from "../components/reviews/StarRating.jsx";
 import useProviderRatingStats from "../hooks/useProviderRatingStats.js";
 import { withProviderRatingStats } from "../lib/providerReviews.js";
 
@@ -192,6 +194,21 @@ export default function Activities() {
                     <p className="activity-city">
                       {[provider.city, provider.province].filter(Boolean).join(" · ")}
                     </p>
+                    {providerCategories.includes("play_center") && (
+                      <>
+                        <StarRating
+                          value={provider.averageRating ?? 0}
+                          label={`Valutazione di ${provider.name}`}
+                          readOnly
+                        />
+                        <RatingSummary
+                          stats={{
+                            count: provider.reviewCount,
+                            averageRating: provider.averageRating
+                          }}
+                        />
+                      </>
+                    )}
                     {provider.services && <p className="activity-services">{provider.services}</p>}
                     {provider.website && (
                       <a className="activity-website" href={provider.website} target="_blank" rel="noreferrer">
