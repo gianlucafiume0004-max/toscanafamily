@@ -169,5 +169,35 @@
     "name": "Magic Simon",
     "url": "https://www.magicsimon.it/",
     "coverageArea": "Toscana"
+  },
+  {
+    "name": "Il Pagliaccio Carmen",
+    "url": "https://www.pagliacciocarmen.it/",
+    "coverageArea": "Pisa e dintorni (entro 200 km)"
+  },
+  {
+    "name": "Il Baule Magico",
+    "url": "https://www.ilbaulemagico.com/",
+    "coverageArea": "Arezzo"
+  },
+  {
+    "name": "Il Baule Magico",
+    "url": "https://www.ilbaulemagico.com/contatti/",
+    "coverageArea": "Arezzo"
+  },
+  {
+    "name": "Valentina Animazione",
+    "url": "https://www.valentina-animazione.it/",
+    "coverageArea": "Province di Livorno e Pisa"
+  },
+  {
+    "name": "Valentina Animazione",
+    "url": "https://www.valentina-animazione.it/servizi/animazione-per-bambini",
+    "coverageArea": "Province di Livorno e Pisa"
+  },
+  {
+    "name": "Magici Sorrisi",
+    "url": "https://en.graziadamaro.com/magici-sorrisi-animazione",
+    "coverageArea": "Vinci (FI)"
   }
 ]

@@ -67,13 +67,13 @@ function requiredEnv(name) {
   return value;
 }
 
-async function loadSourceUrls() {
+async function loadSourceUrls(sourceUrlFilter) {
   const parsed = JSON.parse(await readFile(SOURCE_FILE, "utf8"));
   if (!Array.isArray(parsed)) {
     throw new Error("data/animator-sources.json deve contenere un array.");
   }
 
-  return parsed.map((source, index) => {
+  const sources = parsed.map((source, index) => {
     if (!source || typeof source.name !== "string" || !source.name.trim()) {
       throw new Error(`Fonte ${index + 1}: campo name obbligatorio.`);
     }
@@ -99,6 +99,14 @@ async function loadSourceUrls() {
       coverageArea: source.coverageArea?.trim() || null
     };
   });
+
+  if (!sourceUrlFilter) return sources;
+
+  const filteredSources = sources.filter((source) => source.url === sourceUrlFilter);
+  if (filteredSources.length === 0) {
+    throw new Error(`URL fonte non presente in data/animator-sources.json: ${sourceUrlFilter}`);
+  }
+  return filteredSources;
 }
 
 function normalizeText(value) {
@@ -363,10 +371,27 @@ function extractBusinessData($) {
 }
 
 function extractPhone(text) {
+  const labeledMatches = [
+    ...text.matchAll(
+      /(?:tel(?:efono)?|cell(?:ulare)?|mobile|whatsapp|chiama|chiamami|call)\s*[:.]?\s*((?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10})/gi
+    )
+  ];
+  const labeledPhone = labeledMatches
+    .map((match) => normalizePhone(match[1]))
+    .find(Boolean);
+  if (labeledPhone) return labeledPhone;
+
   const matches = text.match(
     /(?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10}/g
   ) ?? [];
-  return matches.map(normalizePhone).find(Boolean) ?? null;
+  return matches
+    .filter((match) => {
+      const start = text.indexOf(match);
+      const context = text.slice(Math.max(0, start - 32), start).toLowerCase();
+      return !/(?:p\.?\s*i\.?\s*va|partita\s+iva|codice\s+fiscale|c\.?\s*f\.?)\s*:?$/i.test(context);
+    })
+    .map(normalizePhone)
+    .find(Boolean) ?? null;
 }
 
 function cleanName(value) {
@@ -682,11 +707,22 @@ function createReport(candidates, statistics) {
 }
 
 async function main() {
-  if (process.argv.slice(2).some((argument) => argument !== "--dry-run")) {
-    throw new Error("Argomento non riconosciuto. Usa --dry-run per l'esecuzione di test.");
+  const argumentsList = process.argv.slice(2);
+  const dryRun = argumentsList.includes("--dry-run");
+  const sourceUrlArgument = argumentsList.find((argument) =>
+    argument.startsWith("--source-url=")
+  );
+  const unsupportedArguments = argumentsList.filter((argument) =>
+    argument !== "--dry-run" && argument !== sourceUrlArgument
+  );
+  if (unsupportedArguments.length > 0) {
+    throw new Error(
+      "Argomento non riconosciuto. Usa --dry-run e/o --source-url=<URL>."
+    );
   }
 
-  const sourceUrls = await loadSourceUrls();
+  const sourceUrlFilter = sourceUrlArgument?.slice("--source-url=".length);
+  const sourceUrls = await loadSourceUrls(sourceUrlFilter);
   const supabase = createClient(
     requiredEnv("SUPABASE_URL"),
     requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
@@ -746,7 +782,7 @@ async function main() {
     storedCandidates
   );
 
-  if (DRY_RUN) {
+  if (dryRun) {
     console.log("DRY RUN: nessuna scrittura su Supabase.");
   } else {
     await saveCandidates(supabase, plan, storedCandidates);
@@ -761,7 +797,7 @@ async function main() {
     internalDuplicates: discovered.length - candidates.length,
     providerDuplicates
   });
-  if (!DRY_RUN) {
+  if (!dryRun) {
     await writeFile(REPORT_PATH, `${report}\n`, "utf8");
     if (process.env.GITHUB_STEP_SUMMARY) {
       await writeFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`, { flag: "a" });
