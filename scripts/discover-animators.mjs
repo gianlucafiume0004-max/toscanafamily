@@ -204,8 +204,8 @@ function socialProfileKey(value, platform) {
 
   const segment = segments[0];
   const excluded = platform === "facebook"
-    ? new Set(["groups", "events", "watch", "share", "sharer", "login", "plugins"])
-    : new Set(["p", "reel", "reels", "explore", "accounts", "stories"]);
+    ? new Set(["groups", "events", "watch", "share", "sharer", "login", "plugins", "privacy", "policies", "help"])
+    : new Set(["p", "reel", "reels", "explore", "accounts", "stories", "about", "legal", "privacy", "developer", "help"]);
   return segment && !excluded.has(segment) ? `${platform}:${segment}` : null;
 }
 
@@ -289,9 +289,22 @@ async function assertPublicUrl(value) {
     throw new Error("Host locale non consentito.");
   }
 
-  const addresses = isIP(host)
-    ? [{ address: host }]
-    : await lookup(host, { all: true, verbatim: true });
+  let addresses;
+  if (isIP(host)) {
+    addresses = [{ address: host }];
+  } else {
+    let timer;
+    try {
+      addresses = await Promise.race([
+        lookup(host, { all: true, verbatim: true }),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Timeout DNS per ${host}.`)), REQUEST_TIMEOUT_MS);
+        })
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   if (!addresses.length || addresses.some(({ address }) => isPrivateIp(address))) {
     throw new Error("Host di rete privata non consentito.");
@@ -352,14 +365,18 @@ function extractBusinessData($) {
     }
   });
 
-  const business = objects.find((item) => {
+  const businesses = objects.filter((item) => {
+    const type = Array.isArray(item["@type"]) ? item["@type"] : [item["@type"]];
+    return item.name && item.address && type.some((value) =>
+      typeof value === "string" && /^(?:Organization|LocalBusiness|EntertainmentBusiness|EventPlanning)$/i.test(value)
+    );
+  });
+  const business = businesses.find((item) => {
     const sameAs = Array.isArray(item.sameAs) ? item.sameAs : [];
-    return item.name
-      && item.address
-      && sameAs.some((value) =>
+    return sameAs.some((value) =>
         socialProfileKey(value, "facebook") || socialProfileKey(value, "instagram")
       );
-  }) ?? {};
+  }) ?? (businesses.length === 1 ? businesses[0] : {});
   const address = Array.isArray(business.address) ? business.address[0] : business.address;
   const provinceText = String(address?.addressRegion ?? "")
     .trim()
@@ -625,7 +642,7 @@ function stagingUrl(value) {
     !url.search && !url.hash;
 }
 
-function isApprovalEligible(candidate, configuredSources = []) {
+function isApprovalEligible(candidate, configuredSources = [], linkedPolicySources = []) {
   const sources = candidate.field_sources ?? {};
   const required = ["phone", "website", "city", "province"];
   const socials = ["facebook", "instagram"].filter((platform) =>
@@ -635,6 +652,7 @@ function isApprovalEligible(candidate, configuredSources = []) {
     const url = normalizedUrl(sources[field]);
     if (!url || url.protocol !== "https:" || isBlockedHost(url.hostname)) return false;
     if (hostname(url.toString()) === hostname(candidate.website)) return true;
+    if (linkedPolicySources.includes(url.toString())) return true;
     if (["facebook", "instagram"].some((platform) => {
       const key = socialProfileKey(url.toString(), platform);
       return key && key === socialProfileKey(candidate[`${platform}_url`], platform);
@@ -675,6 +693,12 @@ function addEnrichment(candidate, values, sourceUrl) {
 function extractOfficialPhone($, business) {
   const phones = [business.phone];
   $('a[href^="tel:"]').each((_, anchor) => phones.push($(anchor).attr("href").slice(4)));
+  $('a[href]').each((_, anchor) => {
+    let url;
+    try { url = new URL($(anchor).attr("href")); } catch { return; }
+    if (isHost(url.hostname, ["wa.me"])) phones.push(url.pathname.slice(1));
+    if (isHost(url.hostname, ["api.whatsapp.com"])) phones.push(url.searchParams.get("phone"));
+  });
   const text = $("body").text().replace(/\s+/g, " ");
   const labeled = text.matchAll(
     /(?:tel(?:efono)?|cell(?:ulare)?|mobile|whatsapp|chiama|chiamami)\s*[:.]?\s*((?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10})/gi
@@ -683,9 +707,67 @@ function extractOfficialPhone($, business) {
   return phones.map(normalizePhone).find(Boolean) ?? null;
 }
 
+function extractAddress($, business) {
+  const locations = [];
+  if (business.city && business.province) locations.push([business.city, business.province]);
+  const text = $("body").text().replace(/\s+/g, " ");
+  const addressPattern = /\b(?:sede(?:\s+(?:legale|operativa|amministrativa))?|indirizzo|via|viale|piazza|corso|largo)\b[^|;\n]{0,100}?\b(?:\d{5}\s+)?([A-ZÀ-Ü][a-zà-ÿ]+(?:[ '\u2019-]+[A-Za-zÀ-ÿ]+){0,3})\s*[,(-]\s*(AR|FI|GR|LI|LU|MS|PI|PO|PT|SI)\b/giu;
+  for (const match of text.matchAll(addressPattern)) {
+    locations.push([match[1].trim(), match[2].toUpperCase()]);
+  }
+  const capitals = new Map([
+    ["arezzo", ["521", "AR"]], ["firenze", ["501", "FI"]],
+    ["grosseto", ["581", "GR"]], ["livorno", ["571", "LI"]],
+    ["lucca", ["551", "LU"]], ["massa", ["541", "MS"]],
+    ["pisa", ["561", "PI"]], ["pistoia", ["511", "PT"]],
+    ["prato", ["591", "PO"]], ["siena", ["531", "SI"]]
+  ]);
+  const capitalPattern = /\b(?:sede|indirizzo|via|viale|piazza|corso|largo)\b[^|;.\n]{0,100}?\b(\d{5})\s*[-–,]?\s*(Arezzo|Firenze|Grosseto|Livorno|Lucca|Massa|Pisa|Pistoia|Prato|Siena)\b/giu;
+  for (const match of text.matchAll(capitalPattern)) {
+    const [prefix, province] = capitals.get(match[2].toLocaleLowerCase("it-IT"));
+    if (match[1].startsWith(prefix)) locations.push([match[2], province]);
+  }
+  const unique = [...new Map(locations.map(([city, province]) =>
+    [`${city.toLocaleLowerCase("it-IT")}|${province}`, { city, province }]
+  )).values()];
+  return unique.length === 1 ? unique[0] : null;
+}
+
+function extractCoverage(text) {
+  const explicit = text.match(/\b(?:zone|comuni|province|aree)\s+servit[ei]\s*:\s*([^.!?;]{3,100})/i);
+  if (explicit) return explicit[1].trim();
+  const match = text.match(/\b(?:operiamo|lavoriamo|serviamo|disponibil[ei])\s+(?:in|a|su|nelle?|sul(?:la|le)?)\s+([^.!?;]{3,100})/i);
+  if (!match || !/\b(?:toscana|provincia|province|arezzo|firenze|grosseto|livorno|lucca|massa|pisa|pistoia|prato|siena)\b/i.test(match[1])) return null;
+  return match[1].trim();
+}
+
+function pageAttempt(label, url) {
+  const parsed = normalizedUrl(url);
+  const text = `${label} ${parsed?.pathname ?? ""}`.toLowerCase();
+  if (/contatt|contact/.test(text)) return "contatti";
+  if (/privacy/.test(text)) return "privacy policy";
+  if (/cookie/.test(text)) return "cookie policy";
+  if (/termin|condizion|terms/.test(text)) return "termini e condizioni";
+  if (/chi.?siamo|about|azienda|impresa|sede|partita.?iva/.test(text)) return "informazioni aziendali";
+  if (/serviz|service|fest[ae]|animazion|faq|copertura|zone/.test(text)) return "servizi e copertura";
+  return "pagina ufficiale e footer";
+}
+
+function pagePriority(label, url) {
+  const method = pageAttempt(label, url);
+  return {
+    "contatti": 0, "pagina ufficiale e footer": 1, "privacy policy": 2,
+    "cookie policy": 3, "termini e condizioni": 4,
+    "informazioni aziendali": 5, "servizi e copertura": 6
+  }[method];
+}
+
 async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) {
   let result = { ...candidate };
   const failures = [];
+  const enrichments = [];
+  const linkedPolicySources = new Set();
+  let enrichment_attempts = 0;
   const matchingSources = sources.filter((source) => namesMatch(source.name, candidate.name));
   const queue = [
     ...matchingSources.map((source) => source.url),
@@ -694,23 +776,38 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
       hostname(url) && hostname(url) === hostname(candidate.website))
   ].filter(Boolean);
   const seen = new Set();
-  const maxPages = 16;
-  let index = 0;
-  for (; index < queue.length && seen.size < maxPages; index += 1) {
-    const original = normalizedUrl(queue[index]);
+  const labels = new Map();
+  while (queue.length) {
+    queue.sort((a, b) => pagePriority(labels.get(a) ?? "", a) - pagePriority(labels.get(b) ?? "", b));
+    const original = normalizedUrl(queue.shift());
     if (!original || original.protocol !== "https:" || isBlockedHost(original.hostname)) continue;
     const key = original.toString();
     if (seen.has(key)) continue;
     seen.add(key);
+    enrichment_attempts += 1;
+    const attempt = pageAttempt(labels.get(key) ?? "", key);
+    let fetched;
     try {
-      const { html, finalUrl } = await fetchPage(key);
+      fetched = await fetchPage(key);
+    } catch (error) {
+      failures.push(`${key}: ${error.message}`);
+      continue;
+    }
+    {
+      const { html, finalUrl } = fetched;
       const final = normalizedUrl(finalUrl);
-      if (!final) throw new Error("URL finale non valido.");
+      if (!final) {
+        failures.push(`${key}: URL finale non valido.`);
+        continue;
+      }
       const sourceIsSocial = Object.values(SOCIAL_HOSTS).some((hosts) => isHost(original.hostname, hosts));
       const finalIsSocial = Object.values(SOCIAL_HOSTS).some((hosts) => isHost(final.hostname, hosts));
       if (sourceIsSocial !== finalIsSocial ||
+          (sourceIsSocial && !Object.values(SOCIAL_HOSTS).some((hosts) =>
+            isHost(original.hostname, hosts) && isHost(final.hostname, hosts))) ||
           (!sourceIsSocial && hostname(key) !== hostname(finalUrl))) {
-        throw new Error("Redirect verso un dominio non verificato.");
+        failures.push(`${key}: Redirect verso un dominio non verificato.`);
+        continue;
       }
       const $ = cheerio.load(html);
       const business = extractBusinessData($);
@@ -722,18 +819,21 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
       ].filter(Boolean).join(" ").replace(/\s+/g, " ");
       const values = {};
       if (!sourceIsSocial) {
-        if (!result.website) values.website = final.origin;
+        const isPolicyHost = linkedPolicySources.has(key);
+        if (isPolicyHost) linkedPolicySources.add(final.toString());
+        if (!result.website && !isPolicyHost) values.website = final.origin;
         const phone = extractOfficialPhone($, business);
         if (phone) values.phone = `+39${phone}`;
-        if (business.city && business.province &&
-            (!result.city || result.city.toLocaleLowerCase("it-IT") === business.city.toLocaleLowerCase("it-IT")) &&
-            (!result.province || result.province === business.province)) {
-          values.city = business.city;
-          values.province = business.province;
+        const address = extractAddress($, business);
+        if (address &&
+            (!result.city || result.city.toLocaleLowerCase("it-IT") === address.city.toLocaleLowerCase("it-IT")) &&
+            (!result.province || result.province === address.province)) {
+          values.city = address.city;
+          values.province = address.province;
         }
         values.services = extractServices(text);
         const configured = matchingSources.find((source) => source.url === key);
-        if (configured?.coverageArea) values.coverage_area = configured.coverageArea;
+        values.coverage_area = configured?.coverageArea || extractCoverage(text);
         const social = extractSocialLinks($, business.sameAs);
         Object.assign(values, social);
         $("a[href]").each((_, anchor) => {
@@ -743,12 +843,22 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
               /^\/share\/[^/]+/i.test(socialLink.pathname)) {
             queue.push(href);
           }
-          const label = `${$(anchor).text()} ${href}`;
-          if (!/contatt|contact|chi.?siamo|about/i.test(label)) return;
           try {
             const linked = normalizedUrl(new URL(href, final).toString());
-            if (linked && hostname(linked.toString()) === hostname(finalUrl)) {
-              queue.push(linked.toString());
+            if (!linked) return;
+            const label = `${$(anchor).text()} ${linked.pathname}`;
+            if (!/contatt|contact|privacy|cookie|termin|condizion|terms|chi.?siamo|about|azienda|impresa|sede|partita.?iva|serviz|service|fest[ae]|animazion|faq|copertura|zone/i.test(label)) return;
+            const officialPolicy = !isPolicyHost && hostname(finalUrl) === hostname(result.website) &&
+              isHost(linked.hostname, ["iubenda.com"]) &&
+              /\/(?:privacy-policy|termini-e-condizioni)\//i.test(linked.pathname) &&
+              /privacy|cookie|termin|condizion/i.test(label);
+            if (officialPolicy || (!isPolicyHost && hostname(linked.toString()) === hostname(finalUrl))) {
+              const linkedUrl = linked.toString();
+              if (officialPolicy) linkedPolicySources.add(linkedUrl);
+              if (!seen.has(linkedUrl)) {
+                labels.set(linkedUrl, label);
+                queue.push(linkedUrl);
+              }
             }
           } catch {
             console.warn(`Link contatti non valido su ${final.hostname}.`);
@@ -762,29 +872,40 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
           }
         }
       }
+      const previous = result;
       result = addEnrichment(result, values, finalUrl);
-    } catch (error) {
-      failures.push(`${key}: ${error.message}`);
+      for (const field of REQUIRED_FIELDS) {
+        const wasMissing = field === "services" ? !(previous.services ?? []).length : !previous[field];
+        const found = field === "services" ? (result.services ?? []).length : result[field];
+        if (wasMissing && found) {
+          enrichments.push({ field, value: result[field], source_url: finalUrl,
+            attempt: enrichment_attempts, method: attempt });
+        }
+      }
     }
-  }
-  if (index < queue.length) {
-    failures.push(`${candidate.name}: limite di ${maxPages} pagine raggiunto.`);
   }
   result.normalized_phone = normalizePhone(result.phone);
   result.website_domain = hostname(result.website);
   result.quality_score = getQualityScore(result);
   result.missing_fields = getMissingFields(result);
-  return { candidate: result, failures };
+  return { candidate: result, failures, enrichments, enrichment_attempts,
+    enrichment_successes: enrichments.length, linkedPolicySources: [...linkedPolicySources] };
 }
 
 async function reviewPendingCandidates(supabase, candidates, sources, options = {}) {
   const results = [];
+  const enriched = [];
   for (const stored of candidates.filter((candidate) => candidate.status === "pending_review")) {
-    const { candidate, failures } = await enrichCandidate(stored, sources, options.fetchPage);
+    enriched.push({ stored, ...(await enrichCandidate(stored, sources, options.fetchPage)) });
+  }
+  const comparisonCandidates = candidates.map((stored) =>
+    enriched.find((entry) => entry.stored === stored)?.candidate ?? stored
+  );
+  for (const { stored, candidate, failures, enrichments, enrichment_attempts, enrichment_successes, linkedPolicySources } of enriched) {
     let status = "pending_review";
     let approval = null;
-    const conflicts = candidates.filter((other) =>
-      other !== stored && (!other.id || !stored.id || other.id !== stored.id) &&
+    const conflicts = comparisonCandidates.filter((other) =>
+      other !== candidate && (!other.id || !stored.id || other.id !== stored.id) &&
       candidatesMatch(candidate, other)
     );
     const providerConflicts = (options.providers ?? []).map(providerToCandidate).filter((provider) =>
@@ -817,7 +938,7 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
       if (error) throw new Error(`Aggiornamento candidato ${stored.name}: ${error.message}`);
       if (data?.length !== 1) throw new Error(`Candidato ${stored.name} modificato contemporaneamente.`);
       if (options.autoApprove && conflicts.length === 0 && providerConflicts.length === 0 &&
-          isApprovalEligible(candidate, sources)) {
+          isApprovalEligible(candidate, sources, linkedPolicySources)) {
         const response = await supabase.rpc("approve_animator_candidate", {
           p_candidate_id: stored.id, p_city: candidate.city, p_province: candidate.province
         });
@@ -842,13 +963,14 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
         }
       }
     } else if (options.autoApprove && conflicts.length === 0 && providerConflicts.length === 0 &&
-               isApprovalEligible(candidate, sources)) {
+               isApprovalEligible(candidate, sources, linkedPolicySources)) {
       status = "eligible";
     }
     Object.assign(stored, candidate, {
       status: status === "approved" || status === "duplicate" ? status : "pending_review"
     });
-    results.push({ candidate, status, approval, failures });
+    results.push({ candidate, status, approval, failures, enrichments,
+      enrichment_attempts, enrichment_successes, linkedPolicySources });
   }
   return results;
 }
@@ -935,15 +1057,16 @@ function createReport(candidates, statistics, reviews = [], sources = []) {
     "",
     "## Revisione candidati",
     "",
-    "| Candidato | Esito | Punteggio | Dati mancanti | Note |",
-    "|---|---|---:|---|---|",
-    ...reviews.map(({ candidate, status, approval, failures }) =>
+    "| Candidato | Esito | Punteggio | Tentativi | Successi | Dati mancanti | Note |",
+    "|---|---|---:|---:|---:|---|---|",
+    ...reviews.map(({ candidate, status, approval, failures, linkedPolicySources, enrichment_attempts, enrichment_successes }) =>
       `| ${escapeMarkdown(candidate.name)} | ${status} | ${candidate.quality_score} | ` +
+      `${enrichment_attempts} | ${enrichment_successes} | ` +
       `${escapeMarkdown(candidate.missing_fields.join(", ") || "nessuno")} | ` +
       `${escapeMarkdown([
         approval?.provider_id && `Provider: ${approval.provider_id}`,
         approval?.status === "manual_review" && JSON.stringify(approval.matches),
-        !isApprovalEligible(candidate, sources) &&
+        !isApprovalEligible(candidate, sources, linkedPolicySources) &&
           "Provincia, contatti o fonti non validi per l'approvazione",
         ...failures
       ].filter(Boolean).join("; ") || "-")} |`
@@ -954,6 +1077,18 @@ function createReport(candidates, statistics, reviews = [], sources = []) {
     `- Revisione manuale (ancora pending_review): ${reviews.filter((review) => review.status === "manual_review").length}`,
     `- Pending_review: ${reviews.filter((review) => ["pending_review", "manual_review"].includes(review.status)).length}`,
     `- Idonei in dry run: ${reviews.filter((review) => review.status === "eligible").length}`,
+    `- enrichment_attempts: ${reviews.reduce((sum, review) => sum + review.enrichment_attempts, 0)}`,
+    `- enrichment_successes: ${reviews.reduce((sum, review) => sum + review.enrichment_successes, 0)}`,
+    "",
+    "## Campi arricchiti",
+    "",
+    "| Candidato | Campo | Valore | URL sorgente | Tentativo |",
+    "|---|---|---|---|---|",
+    ...reviews.flatMap(({ candidate, enrichments }) => enrichments.map((entry) =>
+      `| ${escapeMarkdown(candidate.name)} | ${escapeMarkdown(entry.field)} | ` +
+      `${escapeMarkdown(Array.isArray(entry.value) ? entry.value.join(", ") : entry.value)} | ` +
+      `${escapeMarkdown(entry.source_url)} | ${entry.attempt}: ${escapeMarkdown(entry.method)} |`
+    )),
     "",
     ...statistics.searchErrors.map((error) => `- Errore fonte: ${escapeMarkdown(error)}`)
   ].join("\n");
@@ -1093,7 +1228,7 @@ async function main() {
   }
 }
 
-export { addEnrichment, candidatesMatch, enrichCandidate, getQualityScore, isApprovalEligible, reviewPendingCandidates, stagingUrl };
+export { addEnrichment, candidatesMatch, createReport, enrichCandidate, fetchPublicHtml, getQualityScore, isApprovalEligible, reviewPendingCandidates, stagingUrl };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {

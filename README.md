@@ -21,12 +21,33 @@ nello staging. Il workflow non installa migration.
 
 La discovery esamina le fonti configurate in `data/animator-sources.json` e
 rivede tutti i candidati `pending_review`, anche se non sono stati scoperti
-durante la nuova esecuzione. Per ciascuno visita le fonti associate, il sito e
-i profili disponibili, segue un numero limitato di pagine contatti e aggiorna
-solo i campi mancanti con la relativa fonte. Errori di rete e limite di pagine
-sono indicati nel report. Non effettua ricerche web generiche: se una fonte
-non è configurata o collegata, occorre aggiungerla dopo averne verificato
-l'identità. Non deduce la sede dalla zona servita.
+durante la nuova esecuzione. Per ciascuno esamina tutti i campi mancanti e
+visita le fonti associate, il sito e i profili disponibili. Segue i link
+pertinenti a contatti, privacy, cookie, termini, informazioni aziendali,
+servizi, feste, animazione, FAQ e copertura; esamina anche footer, dati
+strutturati, link `tel:` e WhatsApp. Le pagine contatti hanno priorità, seguite
+dal sito e dalle altre pagine pertinenti. Ogni URL viene visitato al massimo
+una volta per candidato, fino a esaurire i link noti. Solo dopo l'arricchimento
+di tutti i candidati vengono verificati i duplicati e l'idoneità.
+
+Vengono completati solo i campi vuoti, con la relativa fonte, e il punteggio
+viene ricalcolato dopo ogni pagina. Il report riporta ciascun campo trovato,
+valore, URL, numero e tipo del tentativo, più `enrichment_attempts` (pagine
+richieste, incluse quelle fallite) ed `enrichment_successes` (campi completati)
+per candidato e complessivi. Errori HTTP, DNS e timeout sono riportati e non
+impediscono di provare le altre fonti.
+
+Non si effettuano ricerche web generiche: se una fonte non è configurata o
+collegata, occorre aggiungerla dopo averne verificato l'identità. Le pagine
+collegate devono essere sul sito ufficiale; privacy e termini ospitati su
+Iubenda sono ammessi solo se collegati direttamente dal sito del candidato e
+verificati nella stessa esecuzione. Altri servizi esterni non sono esplorati.
+Gli indirizzi testuali vengono usati se indicano una località con sigla
+provinciale toscana oppure un capoluogo toscano con CAP coerente; indirizzi
+multipli discordanti sulla stessa pagina non vengono scelti automaticamente. Non si deduce la sede dalla
+zona servita. I risultati automatici richiedono comunque verifica editoriale
+della categoria: una sala feste o un noleggio non sono necessariamente un
+animatore.
 
 Il punteggio assegna 40 punti al telefono, 30 al sito, 20 al primo social
 presente e altri 10 al secondo: telefono, sito e un social valgono 90 punti;
