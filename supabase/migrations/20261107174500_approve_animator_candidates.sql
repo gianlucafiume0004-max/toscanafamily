@@ -4,10 +4,22 @@ alter table public.providers
   add column if not exists party_type text,
   add column if not exists social_url text,
   add column if not exists services text,
-  add column if not exists coverage_area text;
+  add column if not exists coverage_area text,
+  add column if not exists notes text,
+  add column if not exists status text default 'partial';
 
 do $$
 begin
+  if exists (
+    select 1
+    from pg_constraint c
+    where c.conrelid = 'public.providers'::regclass
+      and c.conname = 'providers_provider_type_check'
+      and pg_get_constraintdef(c.oid) not like '%''feste''%'
+  ) then
+    raise exception 'Prerequisito mancante: applicare la migration di unificazione delle categorie provider prima di questa migration';
+  end if;
+
   if exists (
     select 1
     from information_schema.columns
@@ -17,14 +29,18 @@ begin
   ) then
     execute $migration$
       update public.providers
-      set provider_kind = provider_type
+      set provider_kind = case
+        when provider_type in ('playroom', 'baby_parking', 'creative_workshop', 'educational_farm', 'other') then 'play_center'
+        when provider_type in ('inflatable_rental', 'photographer', 'catering') then 'feste'
+        else provider_type
+      end
       where provider_kind is null
     $migration$;
   end if;
 
   execute $migration$
     update public.providers
-    set provider_type = provider_kind
+    set provider_type = case when provider_kind = 'play_center' then 'other' else provider_kind end
     where provider_type is null
       and provider_kind is not null
   $migration$;
@@ -92,12 +108,51 @@ begin
 end;
 $$;
 
+create or replace function public.sync_legacy_provider_type()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.provider_type is null and new.provider_kind is not null then
+      new.provider_type := case when new.provider_kind = 'play_center' then 'other' else new.provider_kind end;
+    elsif new.provider_kind is null and new.provider_type is not null then
+      new.provider_kind := case
+        when new.provider_type in ('playroom', 'baby_parking', 'creative_workshop', 'educational_farm', 'other') then 'play_center'
+        when new.provider_type in ('animator', 'party_room', 'inflatable_rental', 'photographer', 'catering') then 'feste'
+        else new.provider_type
+      end;
+    end if;
+  elsif new.provider_kind is distinct from old.provider_kind
+    and new.provider_type is not distinct from old.provider_type then
+    new.provider_type := case when new.provider_kind = 'play_center' then 'other' else new.provider_kind end;
+  elsif new.provider_type is distinct from old.provider_type
+    and new.provider_kind is not distinct from old.provider_kind then
+    new.provider_kind := case
+      when new.provider_type in ('playroom', 'baby_parking', 'creative_workshop', 'educational_farm', 'other') then 'play_center'
+      when new.provider_type in ('animator', 'party_room', 'inflatable_rental', 'photographer', 'catering') then 'feste'
+      else new.provider_type
+    end;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.sync_legacy_provider_type()
+  from public, anon, authenticated;
+
+drop trigger if exists sync_legacy_provider_type on public.providers;
+create trigger sync_legacy_provider_type
+before insert or update of provider_kind, provider_type on public.providers
+for each row execute function public.sync_legacy_provider_type();
+
 create table public.provider_animator_identity_keys (
   identity_kind text not null
     check (identity_kind in ('phone', 'website', 'social')),
   identity_value text not null,
   provider_id text not null,
-  primary key (identity_kind, identity_value)
+  primary key (identity_kind, identity_value, provider_id)
 );
 
 alter table public.provider_animator_identity_keys enable row level security;
@@ -169,11 +224,11 @@ as $$
       when value ~ '^facebook\.com/people/[^/]+/[^/]+$'
         then 'facebook:id:' || substring(value from '^facebook\.com/people/[^/]+/([^/]+)$')
       when value ~ '^facebook\.com/'
-        then 'facebook:' || split_part(substring(value from '^facebook\.com/'), '/', 1)
+        then 'facebook:' || split_part(substring(value from '^facebook\.com/([^/]+)'), '/', 1)
       when value ~ '^fb\.com/'
-        then 'facebook:' || split_part(substring(value from '^fb\.com/'), '/', 1)
+        then 'facebook:' || split_part(substring(value from '^fb\.com/([^/]+)'), '/', 1)
       when value ~ '^instagram\.com/'
-        then 'instagram:' || split_part(substring(value from '^instagram\.com/'), '/', 1)
+        then 'instagram:' || split_part(substring(value from '^instagram\.com/([^/]+)'), '/', 1)
       else null
     end as value
     from normalized_social_urls
@@ -196,7 +251,7 @@ $$;
 insert into public.provider_animator_identity_keys (
   identity_kind, identity_value, provider_id
 )
-select distinct on (identities.identity_kind, identities.identity_value)
+select
   identities.identity_kind,
   identities.identity_value,
   p.id::text
@@ -207,8 +262,7 @@ cross join lateral public.animator_identity_values(
   p.social_url
 ) identities
 where p.provider_kind = 'feste'
-  and p.party_type = 'animatore'
-order by identities.identity_kind, identities.identity_value, p.created_at, p.id;
+  and p.party_type = 'animatore';
 
 create or replace function public.sync_animator_provider_identity_keys()
 returns trigger
@@ -219,7 +273,12 @@ as $$
 declare
   identity record;
   conflicting_provider_id text;
+  previously_present boolean;
 begin
+  perform pg_advisory_xact_lock(
+    hashtext('approve_animator_candidate')::bigint
+  );
+
   if tg_op in ('UPDATE', 'DELETE') then
     if old.provider_kind = 'feste' and old.party_type = 'animatore' then
       delete from public.provider_animator_identity_keys
@@ -241,15 +300,29 @@ begin
       )
       order by identity_kind, identity_value
     loop
-      select provider_id
+      previously_present := false;
+      if tg_op = 'UPDATE' then
+        if old.provider_kind = 'feste' and old.party_type = 'animatore' then
+          select exists (
+            select 1
+            from public.animator_identity_values(
+              old.phone, old.website, old.social_url
+            ) previous_identity
+            where previous_identity.identity_kind = identity.identity_kind
+              and previous_identity.identity_value = identity.identity_value
+          ) into previously_present;
+        end if;
+      end if;
+
+      select k.provider_id
       into conflicting_provider_id
-      from public.provider_animator_identity_keys
-      where identity_kind = identity.identity_kind
-        and identity_value = identity.identity_value
-        and provider_id <> new.id::text
+      from public.provider_animator_identity_keys k
+      where k.identity_kind = identity.identity_kind
+        and k.identity_value = identity.identity_value
+        and k.provider_id <> new.id::text
       limit 1;
 
-      if conflicting_provider_id is not null then
+      if conflicting_provider_id is not null and not previously_present then
         raise exception 'Duplicato animatore: % già associato al provider %',
           identity.identity_kind, conflicting_provider_id
           using errcode = '23505';
@@ -269,17 +342,27 @@ $$;
 revoke all on function public.sync_animator_provider_identity_keys()
   from public, anon, authenticated;
 
+drop trigger if exists sync_animator_provider_identity_keys_insert on public.providers;
 create trigger sync_animator_provider_identity_keys_insert
 after insert on public.providers
 for each row
 execute function public.sync_animator_provider_identity_keys();
 
+drop trigger if exists sync_animator_provider_identity_keys_update on public.providers;
 create trigger sync_animator_provider_identity_keys_update
-after update of provider_kind, party_type, phone, website, social_url
-on public.providers
+after update on public.providers
 for each row
+when (
+  old.id is distinct from new.id
+  or old.provider_kind is distinct from new.provider_kind
+  or old.party_type is distinct from new.party_type
+  or old.phone is distinct from new.phone
+  or old.website is distinct from new.website
+  or old.social_url is distinct from new.social_url
+)
 execute function public.sync_animator_provider_identity_keys();
 
+drop trigger if exists sync_animator_provider_identity_keys_delete on public.providers;
 create trigger sync_animator_provider_identity_keys_delete
 after delete on public.providers
 for each row
@@ -290,7 +373,7 @@ create or replace function public.approve_animator_candidate(
   p_city text,
   p_province text
 )
-returns table(status text, provider_id text, provider_name text)
+returns table(status text, provider_id text, provider_name text, matches jsonb)
 language plpgsql
 security definer
 set search_path = pg_catalog, public, pg_temp
@@ -299,6 +382,8 @@ declare
   candidate public.animator_candidates%rowtype;
   matched_provider_id text;
   matched_provider_name text;
+  matched_providers jsonb;
+  matched_provider_count integer;
   new_provider_id text;
   provider_id_type text;
   generated_provider_id text;
@@ -334,7 +419,7 @@ begin
     end if;
 
     return query
-      select 'approved'::text, matched_provider_id, matched_provider_name;
+      select 'approved'::text, matched_provider_id, matched_provider_name, '[]'::jsonb;
     return;
   end if;
 
@@ -361,35 +446,49 @@ begin
     raise exception 'Il candidato non ha telefono, sito o social confrontabili';
   end if;
 
-  select p.id::text, p.name
-  into matched_provider_id, matched_provider_name
-  from public.provider_animator_identity_keys identity_key
-  join public.providers p on p.id::text = identity_key.provider_id
-  where p.provider_kind = 'feste'
-    and p.party_type = 'animatore'
-    and exists (
-      select 1
-      from public.animator_identity_values(
-        candidate.phone, candidate.website, social_urls
-      ) candidate_identity
-      where candidate_identity.identity_kind = identity_key.identity_kind
-        and candidate_identity.identity_value = identity_key.identity_value
-    )
-  order by case identity_key.identity_kind
-    when 'phone' then 1
-    when 'website' then 2
-    else 3
-  end
-  limit 1;
+  select count(*)::integer,
+    coalesce(jsonb_agg(
+      jsonb_build_object(
+        'provider_id', matched.id,
+        'provider_name', matched.name,
+        'identities', matched.identities
+      ) order by matched.id
+    ), '[]'::jsonb)
+  into matched_provider_count, matched_providers
+  from (
+    select p.id::text as id, p.name,
+      jsonb_agg(
+        jsonb_build_object('kind', identity_key.identity_kind, 'value', identity_key.identity_value)
+        order by identity_key.identity_kind, identity_key.identity_value
+      ) as identities
+    from public.provider_animator_identity_keys identity_key
+    join public.providers p on p.id::text = identity_key.provider_id
+    join public.animator_identity_values(
+      candidate.phone, candidate.website, social_urls
+    ) candidate_identity
+      on candidate_identity.identity_kind = identity_key.identity_kind
+      and candidate_identity.identity_value = identity_key.identity_value
+    where p.provider_kind = 'feste'
+      and p.party_type = 'animatore'
+    group by p.id, p.name
+  ) matched;
 
-  if matched_provider_id is not null then
+  if matched_provider_count > 1 then
+    return query
+      select 'manual_review'::text, null::text, null::text, matched_providers;
+    return;
+  end if;
+
+  if matched_provider_count = 1 then
+    matched_provider_id := matched_providers->0->>'provider_id';
+    matched_provider_name := matched_providers->0->>'provider_name';
     update public.animator_candidates
     set status = 'duplicate',
         updated_at = now()
     where id = candidate.id;
 
     return query
-      select 'duplicate'::text, matched_provider_id, matched_provider_name;
+      select 'duplicate'::text, matched_provider_id, matched_provider_name, matched_providers;
     return;
   end if;
 
@@ -500,7 +599,7 @@ begin
   where id = candidate.id;
 
   return query
-    select 'approved'::text, new_provider_id, candidate.name;
+    select 'approved'::text, new_provider_id, candidate.name, '[]'::jsonb;
 end;
 $$;
 

@@ -113,10 +113,27 @@ async function approveCandidate(supabase, candidateId, options) {
   }
 
   const result = Array.isArray(data) ? data[0] : data;
-  if (!result || !["approved", "duplicate"].includes(result.status)) {
+  if (!result || !["approved", "duplicate", "manual_review"].includes(result.status)) {
     throw new Error(
-      "Risposta inattesa dalla funzione SQL: attesi status approved o duplicate."
+      "Risposta inattesa dalla funzione SQL: attesi status approved, duplicate o manual_review."
     );
+  }
+  if (result.status === "manual_review") {
+    if (!Array.isArray(result.matches) || result.matches.length < 2 ||
+        result.matches.some((match) =>
+          !match.provider_id || !match.provider_name ||
+          !Array.isArray(match.identities) || match.identities.length === 0 ||
+          match.identities.some((identity) => !identity.kind || !identity.value)
+        )) {
+      throw new Error("Risposta manual_review incompleta: provider o identità mancanti.");
+    }
+    console.log(JSON.stringify({
+      candidate: candidate.name,
+      status: result.status,
+      matches: result.matches
+    }, null, 2));
+    process.exitCode = 1;
+    return;
   }
   if (!result.provider_id) {
     throw new Error("La funzione SQL non ha restituito provider_id.");
