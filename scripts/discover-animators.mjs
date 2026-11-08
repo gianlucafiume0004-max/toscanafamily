@@ -2,6 +2,7 @@ import "dotenv/config";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
 
@@ -54,12 +55,16 @@ const PROVINCES = new Map([
 
 const RUN_ID = new Date().toISOString();
 const REPORT_PATH = process.env.REPORT_PATH || "animators-report.md";
-const DRY_RUN = process.argv.includes("--dry-run");
 const SOURCE_FILE = new URL("../data/animator-sources.json", import.meta.url);
 const PAGE_SIZE = 500;
 const REQUEST_TIMEOUT_MS = 12000;
 const USER_AGENT =
   "ToscanaFamilyAnimatorDiscovery/1.0 (+https://github.com/gianlucafiume0004-max/toscanafamily)";
+const STAGING_PROJECT = "eqonpqgazhmjbrjtexmg.supabase.co";
+const REQUIRED_FIELDS = [
+  "phone", "website", "facebook_url", "instagram_url",
+  "city", "province", "services", "coverage_area"
+];
 
 function requiredEnv(name) {
   const value = process.env[name];
@@ -120,9 +125,9 @@ function normalizeText(value) {
 }
 
 function normalizePhone(value) {
-  const digits = String(value ?? "").replace(/\D/g, "");
-  if (digits.startsWith("0039")) return digits.slice(4);
-  if (digits.startsWith("39") && digits.length > 10) return digits.slice(2);
+  let digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("0039")) digits = digits.slice(4);
+  else if (digits.startsWith("39") && digits.length > 10) digits = digits.slice(2);
   return digits.length >= 8 && digits.length <= 11 ? digits : null;
 }
 
@@ -223,14 +228,18 @@ function candidatesMatch(first, second) {
 
   const firstFacebook = socialProfileKey(first.facebook_url, "facebook");
   const secondFacebook = socialProfileKey(second.facebook_url, "facebook");
-  return Boolean(firstFacebook && secondFacebook && firstFacebook === secondFacebook);
+  if (firstFacebook && secondFacebook && firstFacebook === secondFacebook) return true;
+  const firstInstagram = socialProfileKey(first.instagram_url, "instagram");
+  const secondInstagram = socialProfileKey(second.instagram_url, "instagram");
+  return Boolean(firstInstagram && secondInstagram && firstInstagram === secondInstagram);
 }
 
 function getQualityScore(candidate) {
+  const socialCount = Number(Boolean(candidate.facebook_url)) + Number(Boolean(candidate.instagram_url));
   return (candidate.phone ? 40 : 0)
     + (candidate.website ? 30 : 0)
-    + (candidate.facebook_url ? 15 : 0)
-    + (candidate.instagram_url ? 15 : 0);
+    + (socialCount > 0 ? 20 : 0)
+    + (socialCount > 1 ? 10 : 0);
 }
 
 function getMissingFields(candidate) {
@@ -241,7 +250,7 @@ function getMissingFields(candidate) {
     ["instagram_url", candidate.instagram_url],
     ["city", candidate.city],
     ["province", candidate.province],
-    ["services", candidate.services.length > 0],
+    ["services", (candidate.services ?? []).length > 0],
     ["coverage_area", candidate.coverage_area]
   ]
     .filter(([, value]) => !value)
@@ -370,30 +379,6 @@ function extractBusinessData($) {
   };
 }
 
-function extractPhone(text) {
-  const labeledMatches = [
-    ...text.matchAll(
-      /(?:tel(?:efono)?|cell(?:ulare)?|mobile|whatsapp|chiama|chiamami|call)\s*[:.]?\s*((?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10})/gi
-    )
-  ];
-  const labeledPhone = labeledMatches
-    .map((match) => normalizePhone(match[1]))
-    .find(Boolean);
-  if (labeledPhone) return labeledPhone;
-
-  const matches = text.match(
-    /(?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10}/g
-  ) ?? [];
-  return matches
-    .filter((match) => {
-      const start = text.indexOf(match);
-      const context = text.slice(Math.max(0, start - 32), start).toLowerCase();
-      return !/(?:p\.?\s*i\.?\s*va|partita\s+iva|codice\s+fiscale|c\.?\s*f\.?)\s*:?$/i.test(context);
-    })
-    .map(normalizePhone)
-    .find(Boolean) ?? null;
-}
-
 function cleanName(value) {
   return String(value ?? "")
     .replace(/\s*[|–—-]\s*(sito ufficiale|facebook|instagram).*$/i, "")
@@ -411,10 +396,10 @@ function extractSocialLinks($, businessSameAs = []) {
     if (!url) continue;
 
     const host = url.hostname.toLowerCase();
-    if (!result.facebook_url && isHost(host, SOCIAL_HOSTS.facebook)) {
+    if (!result.facebook_url && isHost(host, SOCIAL_HOSTS.facebook) && socialProfileKey(link, "facebook")) {
       result.facebook_url = url.toString();
     }
-    if (!result.instagram_url && isHost(host, SOCIAL_HOSTS.instagram)) {
+    if (!result.instagram_url && isHost(host, SOCIAL_HOSTS.instagram) && socialProfileKey(link, "instagram")) {
       result.instagram_url = url.toString();
     }
   }
@@ -446,10 +431,16 @@ async function buildCandidate({ result, location }) {
   if (website || fromFacebook || fromInstagram) {
     try {
       const fetched = await fetchPublicHtml(sourceUrl);
+      const final = normalizedUrl(fetched.finalUrl);
+      if (!final || (website && hostname(fetched.finalUrl) !== hostname(sourceUrl)) ||
+          (fromFacebook && !isHost(final.hostname, SOCIAL_HOSTS.facebook)) ||
+          (fromInstagram && !isHost(final.hostname, SOCIAL_HOSTS.instagram))) {
+        throw new Error("Redirect verso un dominio non verificato.");
+      }
       $ = cheerio.load(fetched.html);
       finalSourceUrl = fetched.finalUrl;
     } catch (error) {
-      console.warn(`Pagina candidata non estratta (${source.hostname}): ${error.message}`);
+      throw new Error(`Pagina candidata non estratta (${source.hostname}): ${error.message}`);
     }
   }
 
@@ -473,10 +464,10 @@ async function buildCandidate({ result, location }) {
   ].filter(Boolean).join(" ");
   const social = extractSocialLinks($, business.sameAs);
 
-  if (fromFacebook) social.facebook_url = sourceUrl;
-  if (fromInstagram) social.instagram_url = sourceUrl;
+  if (fromFacebook) social.facebook_url = socialProfileKey(finalSourceUrl, "facebook") ? finalSourceUrl : null;
+  if (fromInstagram) social.instagram_url = socialProfileKey(finalSourceUrl, "instagram") ? finalSourceUrl : null;
 
-  const rawPhone = business.phone || extractPhone(searchText);
+  const rawPhone = extractOfficialPhone($, business);
   const normalizedPhone = normalizePhone(rawPhone);
   const services = extractServices(searchText);
   const fieldSources = { name: finalSourceUrl };
@@ -487,6 +478,7 @@ async function buildCandidate({ result, location }) {
   if (business.city && business.province) fieldSources.city = finalSourceUrl;
   if (business.city && business.province) fieldSources.province = finalSourceUrl;
   if (services.length) fieldSources.services = finalSourceUrl;
+  if (location) fieldSources.coverage_area = finalSourceUrl;
 
   const candidate = {
     name,
@@ -529,7 +521,7 @@ function mergeCandidates(existing, incoming) {
     ...(merged.discovery_locations ?? []),
     ...incoming.discovery_locations
   ])];
-  merged.field_sources = { ...(merged.field_sources ?? {}), ...incoming.field_sources };
+  merged.field_sources = { ...incoming.field_sources, ...(merged.field_sources ?? {}) };
   merged.coverage_area = [...new Set([
     ...(merged.coverage_area ?? "").split(";").map((value) => value.trim()).filter(Boolean),
     incoming.coverage_area
@@ -626,13 +618,248 @@ function planCandidateWrites(discovered, providers, storedCandidates) {
   return { plan, providerDuplicates };
 }
 
+function stagingUrl(value) {
+  const url = new URL(value);
+  return url.protocol === "https:" && url.hostname === STAGING_PROJECT &&
+    !url.port && !url.username && !url.password && url.pathname === "/" &&
+    !url.search && !url.hash;
+}
+
+function isApprovalEligible(candidate, configuredSources = []) {
+  const sources = candidate.field_sources ?? {};
+  const required = ["phone", "website", "city", "province"];
+  const socials = ["facebook", "instagram"].filter((platform) =>
+    Boolean(socialProfileKey(candidate[`${platform}_url`], platform))
+  );
+  const hasVerifiedSource = (field) => {
+    const url = normalizedUrl(sources[field]);
+    if (!url || url.protocol !== "https:" || isBlockedHost(url.hostname)) return false;
+    if (hostname(url.toString()) === hostname(candidate.website)) return true;
+    if (["facebook", "instagram"].some((platform) => {
+      const key = socialProfileKey(url.toString(), platform);
+      return key && key === socialProfileKey(candidate[`${platform}_url`], platform);
+    })) return true;
+    return configuredSources.some((source) =>
+      namesMatch(source.name, candidate.name) && normalizedUrl(source.url)?.toString() === url.toString()
+    );
+  };
+  return candidate.status === "pending_review"
+    && Number.isFinite(candidate.quality_score)
+    && candidate.quality_score >= 90
+    && typeof candidate.city === "string" && candidate.city.trim().length > 0
+    && [...PROVINCES.values()].includes(candidate.province)
+    && Boolean(normalizePhone(candidate.phone))
+    && Boolean(normalizedUrl(candidate.website))
+    && required.every(hasVerifiedSource)
+    && socials.some((platform) => hasVerifiedSource(`${platform}_url`));
+}
+
+function addEnrichment(candidate, values, sourceUrl) {
+  const result = { ...candidate, field_sources: { ...(candidate.field_sources ?? {}) } };
+  for (const field of REQUIRED_FIELDS) {
+    const current = field === "services" ? (result.services ?? []).length : result[field];
+    const incoming = field === "services" ? (values.services ?? []).length : values[field];
+    if (!current && incoming) {
+      result[field] = values[field];
+      result.field_sources[field] = sourceUrl;
+    }
+  }
+  result.normalized_phone = normalizePhone(result.phone);
+  result.website_domain = hostname(result.website);
+  result.quality_score = getQualityScore(result);
+  result.missing_fields = getMissingFields(result);
+  result.source_urls = [...new Set([...(result.source_urls ?? []), sourceUrl])];
+  return result;
+}
+
+function extractOfficialPhone($, business) {
+  const phones = [business.phone];
+  $('a[href^="tel:"]').each((_, anchor) => phones.push($(anchor).attr("href").slice(4)));
+  const text = $("body").text().replace(/\s+/g, " ");
+  const labeled = text.matchAll(
+    /(?:tel(?:efono)?|cell(?:ulare)?|mobile|whatsapp|chiama|chiamami)\s*[:.]?\s*((?:\+?39[\s./-]?)?(?:0\d{1,3}|3\d{2})[\s./()-]*\d[\d\s./()-]{5,10})/gi
+  );
+  phones.push(...[...labeled].map((match) => match[1]));
+  return phones.map(normalizePhone).find(Boolean) ?? null;
+}
+
+async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) {
+  let result = { ...candidate };
+  const failures = [];
+  const matchingSources = sources.filter((source) => namesMatch(source.name, candidate.name));
+  const queue = [
+    ...matchingSources.map((source) => source.url),
+    candidate.website, candidate.facebook_url, candidate.instagram_url,
+    ...(candidate.source_urls ?? []).filter((url) =>
+      hostname(url) && hostname(url) === hostname(candidate.website))
+  ].filter(Boolean);
+  const seen = new Set();
+  const maxPages = 16;
+  let index = 0;
+  for (; index < queue.length && seen.size < maxPages; index += 1) {
+    const original = normalizedUrl(queue[index]);
+    if (!original || original.protocol !== "https:" || isBlockedHost(original.hostname)) continue;
+    const key = original.toString();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const { html, finalUrl } = await fetchPage(key);
+      const final = normalizedUrl(finalUrl);
+      if (!final) throw new Error("URL finale non valido.");
+      const sourceIsSocial = Object.values(SOCIAL_HOSTS).some((hosts) => isHost(original.hostname, hosts));
+      const finalIsSocial = Object.values(SOCIAL_HOSTS).some((hosts) => isHost(final.hostname, hosts));
+      if (sourceIsSocial !== finalIsSocial ||
+          (!sourceIsSocial && hostname(key) !== hostname(finalUrl))) {
+        throw new Error("Redirect verso un dominio non verificato.");
+      }
+      const $ = cheerio.load(html);
+      const business = extractBusinessData($);
+      $("script,style,noscript").remove();
+      const text = [
+        $('meta[property="og:description"]').attr("content"),
+        $('meta[name="description"]').attr("content"),
+        $("body").text()
+      ].filter(Boolean).join(" ").replace(/\s+/g, " ");
+      const values = {};
+      if (!sourceIsSocial) {
+        if (!result.website) values.website = final.origin;
+        const phone = extractOfficialPhone($, business);
+        if (phone) values.phone = `+39${phone}`;
+        if (business.city && business.province &&
+            (!result.city || result.city.toLocaleLowerCase("it-IT") === business.city.toLocaleLowerCase("it-IT")) &&
+            (!result.province || result.province === business.province)) {
+          values.city = business.city;
+          values.province = business.province;
+        }
+        values.services = extractServices(text);
+        const configured = matchingSources.find((source) => source.url === key);
+        if (configured?.coverageArea) values.coverage_area = configured.coverageArea;
+        const social = extractSocialLinks($, business.sameAs);
+        Object.assign(values, social);
+        $("a[href]").each((_, anchor) => {
+          const href = $(anchor).attr("href");
+          const socialLink = normalizedUrl(href);
+          if (socialLink && isHost(socialLink.hostname, SOCIAL_HOSTS.facebook) &&
+              /^\/share\/[^/]+/i.test(socialLink.pathname)) {
+            queue.push(href);
+          }
+          const label = `${$(anchor).text()} ${href}`;
+          if (!/contatt|contact|chi.?siamo|about/i.test(label)) return;
+          try {
+            const linked = normalizedUrl(new URL(href, final).toString());
+            if (linked && hostname(linked.toString()) === hostname(finalUrl)) {
+              queue.push(linked.toString());
+            }
+          } catch {
+            console.warn(`Link contatti non valido su ${final.hostname}.`);
+          }
+        });
+        for (const link of Object.values(social)) if (link) queue.push(link);
+      } else {
+        for (const platform of ["facebook", "instagram"]) {
+          if (isHost(final.hostname, SOCIAL_HOSTS[platform]) && socialProfileKey(finalUrl, platform)) {
+            values[`${platform}_url`] = finalUrl;
+          }
+        }
+      }
+      result = addEnrichment(result, values, finalUrl);
+    } catch (error) {
+      failures.push(`${key}: ${error.message}`);
+    }
+  }
+  if (index < queue.length) {
+    failures.push(`${candidate.name}: limite di ${maxPages} pagine raggiunto.`);
+  }
+  result.normalized_phone = normalizePhone(result.phone);
+  result.website_domain = hostname(result.website);
+  result.quality_score = getQualityScore(result);
+  result.missing_fields = getMissingFields(result);
+  return { candidate: result, failures };
+}
+
+async function reviewPendingCandidates(supabase, candidates, sources, options = {}) {
+  const results = [];
+  for (const stored of candidates.filter((candidate) => candidate.status === "pending_review")) {
+    const { candidate, failures } = await enrichCandidate(stored, sources, options.fetchPage);
+    let status = "pending_review";
+    let approval = null;
+    const conflicts = candidates.filter((other) =>
+      other !== stored && (!other.id || !stored.id || other.id !== stored.id) &&
+      candidatesMatch(candidate, other)
+    );
+    const providerConflicts = (options.providers ?? []).map(providerToCandidate).filter((provider) =>
+      candidatesMatch(candidate, provider)
+    );
+    if (conflicts.length) {
+      failures.push(`Possibili duplicati tra candidati: ${conflicts.map((item) => item.name).join(", ")}`);
+    }
+    if (providerConflicts.length) {
+      failures.push(`Possibili duplicati tra provider: ${providerConflicts.map((item) => item.name).join(", ")}`);
+    }
+    if (!options.dryRun) {
+      const { data, error } = await supabase.from("animator_candidates").update({
+        phone: candidate.phone,
+        normalized_phone: candidate.normalized_phone,
+        website: candidate.website,
+        website_domain: candidate.website_domain,
+        facebook_url: candidate.facebook_url,
+        instagram_url: candidate.instagram_url,
+        city: candidate.city,
+        province: candidate.province,
+        services: candidate.services,
+        coverage_area: candidate.coverage_area,
+        source_urls: candidate.source_urls,
+        field_sources: candidate.field_sources,
+        missing_fields: candidate.missing_fields,
+        quality_score: candidate.quality_score,
+        updated_at: new Date().toISOString()
+      }).eq("id", stored.id).eq("status", "pending_review").select("id");
+      if (error) throw new Error(`Aggiornamento candidato ${stored.name}: ${error.message}`);
+      if (data?.length !== 1) throw new Error(`Candidato ${stored.name} modificato contemporaneamente.`);
+      if (options.autoApprove && conflicts.length === 0 && providerConflicts.length === 0 &&
+          isApprovalEligible(candidate, sources)) {
+        const response = await supabase.rpc("approve_animator_candidate", {
+          p_candidate_id: stored.id, p_city: candidate.city, p_province: candidate.province
+        });
+        if (response.error) throw new Error(`Approvazione ${stored.name}: ${response.error.message}`);
+        approval = Array.isArray(response.data) ? response.data[0] : response.data;
+        if (!approval || !["approved", "duplicate", "manual_review"].includes(approval.status) ||
+            (approval.status !== "manual_review" && !approval.provider_id) ||
+            (approval.status === "manual_review" && (!Array.isArray(approval.matches) ||
+              approval.matches.length < 2 || approval.matches.some((match) =>
+                !match.provider_id || !match.provider_name || !Array.isArray(match.identities) ||
+                !match.identities.length || match.identities.some((identity) => !identity.kind || !identity.value))))) {
+          throw new Error(`Risposta RPC non valida per ${stored.name}.`);
+        }
+        status = approval.status;
+        if (status === "approved") {
+          const provider = await supabase.from("providers")
+            .select("id,provider_kind,party_type").eq("id", approval.provider_id).maybeSingle();
+          if (provider.error) throw new Error(`Verifica provider ${stored.name}: ${provider.error.message}`);
+          if (!provider.data || provider.data.provider_kind !== "feste" || provider.data.party_type !== "animatore") {
+            throw new Error(`Provider approvato non trovato o categoria non valida per ${stored.name}.`);
+          }
+        }
+      }
+    } else if (options.autoApprove && conflicts.length === 0 && providerConflicts.length === 0 &&
+               isApprovalEligible(candidate, sources)) {
+      status = "eligible";
+    }
+    Object.assign(stored, candidate, {
+      status: status === "approved" || status === "duplicate" ? status : "pending_review"
+    });
+    results.push({ candidate, status, approval, failures });
+  }
+  return results;
+}
+
 async function saveCandidates(supabase, plan, storedCandidates) {
   const saved = [];
   for (const entry of plan) {
     const now = new Date().toISOString();
     if (entry.action === "update") {
       const { stored, candidate: merged } = entry;
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("animator_candidates")
         .update({
           phone: merged.phone,
@@ -655,9 +882,11 @@ async function saveCandidates(supabase, plan, storedCandidates) {
           last_seen_at: now
         })
         .eq("id", stored.id)
-        .eq("status", "pending_review");
+        .eq("status", "pending_review")
+        .select("id");
 
       if (error) throw new Error(`Aggiornamento candidato ${stored.name}: ${error.message}`);
+      if (data?.length !== 1) throw new Error(`Candidato ${stored.name} modificato contemporaneamente.`);
       Object.assign(stored, merged, { updated_at: now, last_seen_at: now });
       saved.push(merged);
       continue;
@@ -686,7 +915,7 @@ function escapeMarkdown(value) {
   return String(value ?? "-").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
-function createReport(candidates, statistics) {
+function createReport(candidates, statistics, reviews = [], sources = []) {
   return [
     `# NUOVI CANDIDATI — ${new Date().toISOString().slice(0, 10)}`,
     "",
@@ -702,7 +931,31 @@ function createReport(candidates, statistics) {
       `| ${escapeMarkdown(candidate.name)} | ${candidate.quality_score} | ` +
       `${escapeMarkdown(candidate.missing_fields.join(", ") || "nessuno")} | ` +
       `${escapeMarkdown(candidate.source_urls[0])} |`
-    )
+    ),
+    "",
+    "## Revisione candidati",
+    "",
+    "| Candidato | Esito | Punteggio | Dati mancanti | Note |",
+    "|---|---|---:|---|---|",
+    ...reviews.map(({ candidate, status, approval, failures }) =>
+      `| ${escapeMarkdown(candidate.name)} | ${status} | ${candidate.quality_score} | ` +
+      `${escapeMarkdown(candidate.missing_fields.join(", ") || "nessuno")} | ` +
+      `${escapeMarkdown([
+        approval?.provider_id && `Provider: ${approval.provider_id}`,
+        approval?.status === "manual_review" && JSON.stringify(approval.matches),
+        !isApprovalEligible(candidate, sources) &&
+          "Provincia, contatti o fonti non validi per l'approvazione",
+        ...failures
+      ].filter(Boolean).join("; ") || "-")} |`
+    ),
+    "",
+    `- Approvati: ${reviews.filter((review) => review.status === "approved").length}`,
+    `- Duplicati: ${reviews.filter((review) => review.status === "duplicate").length}`,
+    `- Revisione manuale (ancora pending_review): ${reviews.filter((review) => review.status === "manual_review").length}`,
+    `- Pending_review: ${reviews.filter((review) => ["pending_review", "manual_review"].includes(review.status)).length}`,
+    `- Idonei in dry run: ${reviews.filter((review) => review.status === "eligible").length}`,
+    "",
+    ...statistics.searchErrors.map((error) => `- Errore fonte: ${escapeMarkdown(error)}`)
   ].join("\n");
 }
 
@@ -722,9 +975,18 @@ async function main() {
   }
 
   const sourceUrlFilter = sourceUrlArgument?.slice("--source-url=".length);
-  const sourceUrls = await loadSourceUrls(sourceUrlFilter);
+  const allSources = await loadSourceUrls();
+  const sourceUrls = sourceUrlFilter ? await loadSourceUrls(sourceUrlFilter) : allSources;
+  const supabaseUrl = requiredEnv("SUPABASE_URL");
+  const autoApprove = process.env.ANIMATOR_AUTO_APPROVE === "true";
+  if (!dryRun && !stagingUrl(supabaseUrl)) {
+    throw new Error("Discovery con scrittura consentita solo sul progetto staging eqonpqgazhmjbrjtexmg.");
+  }
+  if (autoApprove && !stagingUrl(supabaseUrl)) {
+    throw new Error("Approvazione automatica consentita solo sul progetto staging eqonpqgazhmjbrjtexmg.");
+  }
   const supabase = createClient(
-    requiredEnv("SUPABASE_URL"),
+    supabaseUrl,
     requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
@@ -754,8 +1016,7 @@ async function main() {
   const providers = await loadAll(
     supabase,
     "providers",
-    "id,name,phone,website,social_url",
-    { provider_kind: "feste", party_type: "animatore" }
+    "id,name,phone,website,social_url"
   );
   let candidatesTableAvailable = true;
   let storedCandidates;
@@ -769,7 +1030,7 @@ async function main() {
         "discovery_run_id,status,approved_provider_id"
     );
   } catch (error) {
-    if (!DRY_RUN || error.code !== "PGRST205") throw error;
+    if (!dryRun || error.code !== "PGRST205") throw error;
     candidatesTableAvailable = false;
     storedCandidates = [];
     console.warn(
@@ -788,6 +1049,20 @@ async function main() {
     await saveCandidates(supabase, plan, storedCandidates);
   }
 
+  const pendingForReview = dryRun
+    ? [
+      ...storedCandidates.map((stored) =>
+        plan.find((entry) => entry.action === "update" && entry.stored.id === stored.id)?.candidate ?? stored),
+      ...plan.filter((entry) => entry.action === "insert").map((entry) => entry.candidate)
+    ]
+    : await loadAll(supabase, "animator_candidates",
+      "id,name,normalized_name,phone,normalized_phone,website,website_domain," +
+      "facebook_url,instagram_url,city,province,services,coverage_area,source_urls," +
+      "field_sources,missing_fields,quality_score,discovery_locations," +
+      "discovery_run_id,status,approved_provider_id");
+  const reviews = await reviewPendingCandidates(supabase, pendingForReview, allSources, {
+    dryRun, autoApprove, providers
+  });
   const newCandidates = plan
     .filter(({ action }) => action === "insert")
     .map(({ candidate }) => candidate);
@@ -795,8 +1070,9 @@ async function main() {
     sourcesAnalyzed: sourceUrls.length - searchErrors.length,
     rawCandidates: discovered.length,
     internalDuplicates: discovered.length - candidates.length,
-    providerDuplicates
-  });
+    providerDuplicates,
+    searchErrors
+  }, reviews, allSources);
   if (!dryRun) {
     await writeFile(REPORT_PATH, `${report}\n`, "utf8");
     if (process.env.GITHUB_STEP_SUMMARY) {
@@ -817,7 +1093,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`Discovery Animatori fallita: ${error.message}`);
-  process.exitCode = 1;
-});
+export { addEnrichment, candidatesMatch, enrichCandidate, getQualityScore, isApprovalEligible, reviewPendingCandidates, stagingUrl };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`Discovery Animatori fallita: ${error.message}`);
+    process.exitCode = 1;
+  });
+}

@@ -33,8 +33,9 @@ jobs:
       - name: Discover candidates
         run: node scripts/discover-animators.mjs
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SECRET_KEY }}
+          ANIMATOR_AUTO_APPROVE: "true"
 
       - name: Upload discovery report
         if: always()
