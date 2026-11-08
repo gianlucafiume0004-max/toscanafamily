@@ -5,6 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as cheerio from "cheerio";
+import { classifyAnimator, isAnimatorCategory, learnApproved, loadMunicipalities, mergeLearning, normalize } from "./animator-learning.mjs";
 
 const SERVICE_TERMS = [
   ["animazione", /\banimazion[ei]?\b/i],
@@ -672,6 +673,18 @@ function isApprovalEligible(candidate, configuredSources = [], linkedPolicySourc
     && socials.some((platform) => hasVerifiedSource(`${platform}_url`));
 }
 
+function classifyReviewStatus(candidate, confidence, {
+  duplicate = false, geoConsistent = true, sources = [], linkedPolicySources = []
+} = {}) {
+  if (duplicate) return "duplicate";
+  if (!geoConsistent || !isApprovalEligible(candidate, sources, linkedPolicySources)) {
+    return "pending_review";
+  }
+  if (confidence.confidence_animatore >= 80) return "approved_auto";
+  if (confidence.confidence_animatore >= 60) return "approved_probable";
+  return "pending_review";
+}
+
 function addEnrichment(candidate, values, sourceUrl) {
   const result = { ...candidate, field_sources: { ...(candidate.field_sources ?? {}) } };
   for (const field of REQUIRED_FIELDS) {
@@ -707,7 +720,7 @@ function extractOfficialPhone($, business) {
   return phones.map(normalizePhone).find(Boolean) ?? null;
 }
 
-function extractAddress($, business) {
+function extractAddress($, business, municipalities) {
   const locations = [];
   if (business.city && business.province) locations.push([business.city, business.province]);
   const text = $("body").text().replace(/\s+/g, " ");
@@ -726,6 +739,20 @@ function extractAddress($, business) {
   for (const match of text.matchAll(capitalPattern)) {
     const [prefix, province] = capitals.get(match[2].toLocaleLowerCase("it-IT"));
     if (match[1].startsWith(prefix)) locations.push([match[2], province]);
+  }
+  if (municipalities) {
+    const segments = text.matchAll(/\b(?:sede\s+(?:legale|operativa|amministrativa)|indirizzo)\b[^|;.\n]{0,100}/gi);
+    for (const segment of segments) {
+      const value = ` ${normalize(segment[0]).replace(/[^a-z0-9]+/g, " ")} `;
+      const found = [...municipalities].filter(([city, province]) =>
+        province && value.includes(` ${city.replace(/[^a-z0-9]+/g, " ")} `)
+      );
+      if (found.length === 1) {
+        const [city, province] = found[0];
+        const match = segment[0].match(new RegExp(city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+        if (match) locations.push([match[0], province]);
+      }
+    }
   }
   const unique = [...new Map(locations.map(([city, province]) =>
     [`${city.toLocaleLowerCase("it-IT")}|${province}`, { city, province }]
@@ -762,23 +789,44 @@ function pagePriority(label, url) {
   }[method];
 }
 
-async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) {
+async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml, options = {}) {
   let result = { ...candidate };
   const failures = [];
   const enrichments = [];
+  const retryUrls = new Set();
   const linkedPolicySources = new Set();
+  const classificationText = [];
   let enrichment_attempts = 0;
   const matchingSources = sources.filter((source) => namesMatch(source.name, candidate.name));
+  const citySource = normalizedUrl(result.field_sources?.city);
+  const trustedCitySource = citySource && citySource.protocol === "https:" &&
+    (hostname(citySource.toString()) === hostname(result.website) ||
+      matchingSources.some((source) => normalizedUrl(source.url)?.toString() === citySource.toString()));
+  if (!result.province && result.city && trustedCitySource && options.municipalities) {
+    const province = options.municipalities.get(normalize(result.city));
+    if (province) {
+      result = addEnrichment(result, { province }, citySource.toString());
+      enrichments.push({ field: "province", value: province, source_url: citySource.toString(),
+        attempt: 0, method: "mappatura ISTAT", timestamp: new Date().toISOString() });
+    }
+  }
   const queue = [
     ...matchingSources.map((source) => source.url),
     candidate.website, candidate.facebook_url, candidate.instagram_url,
+    ...(options.learning?.retries?.[candidate.id] ?? []).filter((url) =>
+      hostname(url) && hostname(url) === hostname(candidate.website)),
     ...(candidate.source_urls ?? []).filter((url) =>
       hostname(url) && hostname(url) === hostname(candidate.website))
   ].filter(Boolean);
   const seen = new Set();
   const labels = new Map();
+  const socialWebsiteCandidates = new Map();
   while (queue.length) {
-    queue.sort((a, b) => pagePriority(labels.get(a) ?? "", a) - pagePriority(labels.get(b) ?? "", b));
+    queue.sort((a, b) => {
+      const priority = (url) => pagePriority(labels.get(url) ?? "", url) -
+        Math.min(options.learning?.pages?.[pageAttempt(labels.get(url) ?? "", url)] ?? 0, 20) / 4;
+      return priority(a) - priority(b);
+    });
     const original = normalizedUrl(queue.shift());
     if (!original || original.protocol !== "https:" || isBlockedHost(original.hostname)) continue;
     const key = original.toString();
@@ -791,6 +839,7 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
       fetched = await fetchPage(key);
     } catch (error) {
       failures.push(`${key}: ${error.message}`);
+      retryUrls.add(key);
       continue;
     }
     {
@@ -810,13 +859,26 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
         continue;
       }
       const $ = cheerio.load(html);
+      const expectedSocial = socialWebsiteCandidates.get(key);
+      if (expectedSocial) {
+        const reciprocal = $("a[href]").toArray().some((anchor) =>
+          socialProfileKey($(anchor).attr("href"), expectedSocial.platform) === expectedSocial.key
+        );
+        if (!reciprocal) {
+          failures.push(`${key}: sito collegato dal social senza collegamento reciproco al profilo.`);
+          continue;
+        }
+      }
       const business = extractBusinessData($);
       $("script,style,noscript").remove();
       const text = [
+        $("title").text(),
+        $("h1,h2,h3").text(),
         $('meta[property="og:description"]').attr("content"),
         $('meta[name="description"]').attr("content"),
         $("body").text()
       ].filter(Boolean).join(" ").replace(/\s+/g, " ");
+      if (!linkedPolicySources.has(key)) classificationText.push(text);
       const values = {};
       if (!sourceIsSocial) {
         const isPolicyHost = linkedPolicySources.has(key);
@@ -824,7 +886,11 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
         if (!result.website && !isPolicyHost) values.website = final.origin;
         const phone = extractOfficialPhone($, business);
         if (phone) values.phone = `+39${phone}`;
-        const address = extractAddress($, business);
+        let address = extractAddress($, business, options.municipalities);
+        if (!address && business.city && !business.province && options.municipalities) {
+          const province = options.municipalities.get(normalize(business.city));
+          if (province) address = { city: business.city, province };
+        }
         if (address &&
             (!result.city || result.city.toLocaleLowerCase("it-IT") === address.city.toLocaleLowerCase("it-IT")) &&
             (!result.province || result.province === address.province)) {
@@ -869,6 +935,25 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
         for (const platform of ["facebook", "instagram"]) {
           if (isHost(final.hostname, SOCIAL_HOSTS[platform]) && socialProfileKey(finalUrl, platform)) {
             values[`${platform}_url`] = finalUrl;
+            const socialKey = socialProfileKey(finalUrl, platform);
+            const isKnown = socialKey === socialProfileKey(result[`${platform}_url`], platform) ||
+              matchingSources.some((source) => socialKey === socialProfileKey(source.url, platform));
+            if (!result.website && isKnown) {
+              const websites = new Map();
+              $("a[href]").each((_, anchor) => {
+                const link = normalizedUrl($(anchor).attr("href"));
+                if (!link || link.protocol !== "https:" || isBlockedHost(link.hostname) ||
+                    Object.values(SOCIAL_HOSTS).some((hosts) => isHost(link.hostname, hosts)) ||
+                    isHost(link.hostname, ["wa.me", "whatsapp.com", "iubenda.com"]) ||
+                    !/sito|website|visit|official/i.test($(anchor).text())) return;
+                websites.set(hostname(link.toString()), link.toString());
+              });
+              if (websites.size === 1) {
+                const website = [...websites.values()][0];
+                socialWebsiteCandidates.set(website, { platform, key: socialKey });
+                queue.push(website);
+              }
+            }
           }
         }
       }
@@ -878,8 +963,8 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
         const wasMissing = field === "services" ? !(previous.services ?? []).length : !previous[field];
         const found = field === "services" ? (result.services ?? []).length : result[field];
         if (wasMissing && found) {
-          enrichments.push({ field, value: result[field], source_url: finalUrl,
-            attempt: enrichment_attempts, method: attempt });
+          enrichments.push({ field, value: result[field], source_url: result.field_sources[field],
+            attempt: enrichment_attempts, method: attempt, timestamp: new Date().toISOString() });
         }
       }
     }
@@ -889,19 +974,27 @@ async function enrichCandidate(candidate, sources, fetchPage = fetchPublicHtml) 
   result.quality_score = getQualityScore(result);
   result.missing_fields = getMissingFields(result);
   return { candidate: result, failures, enrichments, enrichment_attempts,
-    enrichment_successes: enrichments.length, linkedPolicySources: [...linkedPolicySources] };
+    enrichment_successes: enrichments.length, enrichment_failures: failures.length, retryUrls: [...retryUrls],
+    linkedPolicySources: [...linkedPolicySources],
+    confidence: classifyAnimator(classificationText.join(" ")) };
 }
 
 async function reviewPendingCandidates(supabase, candidates, sources, options = {}) {
   const results = [];
   const enriched = [];
-  for (const stored of candidates.filter((candidate) => candidate.status === "pending_review")) {
-    enriched.push({ stored, ...(await enrichCandidate(stored, sources, options.fetchPage)) });
+  const pending = candidates.filter((candidate) => candidate.status === "pending_review")
+    .sort((a, b) => {
+      const aScore = getQualityScore(a);
+      const bScore = getQualityScore(b);
+      return Number(bScore >= 90) - Number(aScore >= 90) || bScore - aScore;
+    });
+  for (const stored of pending) {
+    enriched.push({ stored, ...(await enrichCandidate(stored, sources, options.fetchPage, options)) });
   }
   const comparisonCandidates = candidates.map((stored) =>
     enriched.find((entry) => entry.stored === stored)?.candidate ?? stored
   );
-  for (const { stored, candidate, failures, enrichments, enrichment_attempts, enrichment_successes, linkedPolicySources } of enriched) {
+  for (const { stored, candidate, failures, enrichments, enrichment_attempts, enrichment_successes, enrichment_failures, retryUrls, linkedPolicySources, confidence } of enriched) {
     let status = "pending_review";
     let approval = null;
     const conflicts = comparisonCandidates.filter((other) =>
@@ -911,12 +1004,23 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
     const providerConflicts = (options.providers ?? []).map(providerToCandidate).filter((provider) =>
       candidatesMatch(candidate, provider)
     );
+    const geoConsistent = !options.municipalities ||
+      options.municipalities.get(normalize(candidate.city)) === candidate.province;
+    if (!geoConsistent && candidate.city && candidate.province) {
+      failures.push("Comune e provincia non verificati nell'elenco ISTAT.");
+    }
     if (conflicts.length) {
       failures.push(`Possibili duplicati tra candidati: ${conflicts.map((item) => item.name).join(", ")}`);
     }
     if (providerConflicts.length) {
       failures.push(`Possibili duplicati tra provider: ${providerConflicts.map((item) => item.name).join(", ")}`);
     }
+    const duplicate = conflicts.length > 0 || providerConflicts.length > 0;
+    const requirementsEligible = !duplicate && geoConsistent &&
+      isApprovalEligible(candidate, sources, linkedPolicySources);
+    status = classifyReviewStatus(candidate, confidence, {
+      duplicate, geoConsistent, sources, linkedPolicySources
+    });
     if (!options.dryRun) {
       const { data, error } = await supabase.from("animator_candidates").update({
         phone: candidate.phone,
@@ -937,8 +1041,7 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
       }).eq("id", stored.id).eq("status", "pending_review").select("id");
       if (error) throw new Error(`Aggiornamento candidato ${stored.name}: ${error.message}`);
       if (data?.length !== 1) throw new Error(`Candidato ${stored.name} modificato contemporaneamente.`);
-      if (options.autoApprove && conflicts.length === 0 && providerConflicts.length === 0 &&
-          isApprovalEligible(candidate, sources, linkedPolicySources)) {
+      if (options.autoApprove && status === "approved_auto") {
         const response = await supabase.rpc("approve_animator_candidate", {
           p_candidate_id: stored.id, p_city: candidate.city, p_province: candidate.province
         });
@@ -952,8 +1055,9 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
                 !match.identities.length || match.identities.some((identity) => !identity.kind || !identity.value))))) {
           throw new Error(`Risposta RPC non valida per ${stored.name}.`);
         }
-        status = approval.status;
-        if (status === "approved") {
+        status = approval.status === "approved" ? "approved_auto"
+          : approval.status === "duplicate" ? "duplicate" : "pending_review";
+        if (approval.status === "approved") {
           const provider = await supabase.from("providers")
             .select("id,provider_kind,party_type").eq("id", approval.provider_id).maybeSingle();
           if (provider.error) throw new Error(`Verifica provider ${stored.name}: ${provider.error.message}`);
@@ -962,15 +1066,15 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
           }
         }
       }
-    } else if (options.autoApprove && conflicts.length === 0 && providerConflicts.length === 0 &&
-               isApprovalEligible(candidate, sources, linkedPolicySources)) {
-      status = "eligible";
     }
     Object.assign(stored, candidate, {
-      status: status === "approved" || status === "duplicate" ? status : "pending_review"
+      status: approval?.status === "approved" || approval?.status === "duplicate"
+        ? approval.status : "pending_review"
     });
     results.push({ candidate, status, approval, failures, enrichments,
-      enrichment_attempts, enrichment_successes, linkedPolicySources });
+      enrichment_attempts, enrichment_successes, enrichment_failures, retryUrls, linkedPolicySources,
+      confidence, requirementsEligible,
+      publicationEligible: status === "approved_auto" || status === "approved_probable" });
   }
   return results;
 }
@@ -1038,6 +1142,26 @@ function escapeMarkdown(value) {
 }
 
 function createReport(candidates, statistics, reviews = [], sources = []) {
+  const quasiApprovati = reviews.slice().sort((a, b) => {
+    const aScore = getQualityScore(a.candidate);
+    const bScore = getQualityScore(b.candidate);
+    return Number(bScore >= 90) - Number(aScore >= 90) || bScore - aScore;
+  }).filter(({ status, candidate, confidence }) =>
+    ["approved_auto", "approved_probable"].includes(status) ||
+    candidate.quality_score >= 90 ||
+    confidence?.confidence_animatore >= 60
+  ).slice(0, 20);
+  const quasiApprovatiLabel = (review) => {
+    if (review.status === "duplicate") return "duplicato";
+    if (review.status === "approved_auto") return "approvabile automaticamente";
+    if (review.status === "approved_probable") return "pubblicabile, richiede verifica leggera";
+    if (review.requirementsEligible) return "manca solo verifica categoria";
+    if (review.candidate.quality_score < 90) return "manca punteggio qualità minimo (90)";
+    if (!review.candidate.phone || !review.candidate.website) return "mancano telefono o sito";
+    if (!review.candidate.city || !review.candidate.province) return "manca sede toscana verificata";
+    if (!review.candidate.facebook_url && !review.candidate.instagram_url) return "manca un social ufficiale";
+    return "da verificare: fonti, duplicati o categoria";
+  };
   return [
     `# NUOVI CANDIDATI — ${new Date().toISOString().slice(0, 10)}`,
     "",
@@ -1057,37 +1181,49 @@ function createReport(candidates, statistics, reviews = [], sources = []) {
     "",
     "## Revisione candidati",
     "",
-    "| Candidato | Esito | Punteggio | Tentativi | Successi | Dati mancanti | Note |",
-    "|---|---|---:|---:|---:|---|---|",
-    ...reviews.map(({ candidate, status, approval, failures, linkedPolicySources, enrichment_attempts, enrichment_successes }) =>
+    "| Candidato | Esito | Punteggio | Tentativi | Successi | Errori | Dati mancanti | Note |",
+    "|---|---|---:|---:|---:|---:|---|---|",
+    ...reviews.map(({ candidate, status, approval, failures, linkedPolicySources, enrichment_attempts, enrichment_successes, enrichment_failures, confidence }) =>
       `| ${escapeMarkdown(candidate.name)} | ${status} | ${candidate.quality_score} | ` +
-      `${enrichment_attempts} | ${enrichment_successes} | ` +
+      `${enrichment_attempts} | ${enrichment_successes} | ${enrichment_failures ?? 0} | ` +
       `${escapeMarkdown(candidate.missing_fields.join(", ") || "nessuno")} | ` +
       `${escapeMarkdown([
         approval?.provider_id && `Provider: ${approval.provider_id}`,
         approval?.status === "manual_review" && JSON.stringify(approval.matches),
         !isApprovalEligible(candidate, sources, linkedPolicySources) &&
           "Provincia, contatti o fonti non validi per l'approvazione",
+        confidence && !isAnimatorCategory(confidence) && "Categoria da verificare",
+        confidence && JSON.stringify(confidence),
         ...failures
       ].filter(Boolean).join("; ") || "-")} |`
     ),
     "",
-    `- Approvati: ${reviews.filter((review) => review.status === "approved").length}`,
+    `- approved_auto: ${reviews.filter((review) => review.status === "approved_auto").length}`,
+    `- approved_probable: ${reviews.filter((review) => review.status === "approved_probable").length}`,
+    `- pending_review: ${reviews.filter((review) => review.status === "pending_review").length}`,
     `- Duplicati: ${reviews.filter((review) => review.status === "duplicate").length}`,
-    `- Revisione manuale (ancora pending_review): ${reviews.filter((review) => review.status === "manual_review").length}`,
-    `- Pending_review: ${reviews.filter((review) => ["pending_review", "manual_review"].includes(review.status)).length}`,
-    `- Idonei in dry run: ${reviews.filter((review) => review.status === "eligible").length}`,
+    `- Approvazioni RPC con revisione manuale: ${reviews.filter((review) => review.approval?.status === "manual_review").length}`,
     `- enrichment_attempts: ${reviews.reduce((sum, review) => sum + review.enrichment_attempts, 0)}`,
     `- enrichment_successes: ${reviews.reduce((sum, review) => sum + review.enrichment_successes, 0)}`,
+    `- enrichment_failures: ${reviews.reduce((sum, review) => sum + (review.enrichment_failures ?? 0), 0)}`,
+    "",
+    "## QUASI APPROVATI",
+    "",
+    ...(quasiApprovati.length
+      ? quasiApprovati.map((review) =>
+        `- ${escapeMarkdown(review.candidate.name)}: ${quasiApprovatiLabel(review)} ` +
+        `(quality_score ${review.candidate.quality_score}; confidence_animatore ${review.confidence?.confidence_animatore ?? 0})`
+      )
+      : ["- Nessun candidato vicino all'approvazione."]),
     "",
     "## Campi arricchiti",
     "",
-    "| Candidato | Campo | Valore | URL sorgente | Tentativo |",
-    "|---|---|---|---|---|",
+    "| Candidato | Campo | Valore | URL sorgente | Pagina | Tentativo | Timestamp |",
+    "|---|---|---|---|---|---|---|",
     ...reviews.flatMap(({ candidate, enrichments }) => enrichments.map((entry) =>
       `| ${escapeMarkdown(candidate.name)} | ${escapeMarkdown(entry.field)} | ` +
       `${escapeMarkdown(Array.isArray(entry.value) ? entry.value.join(", ") : entry.value)} | ` +
-      `${escapeMarkdown(entry.source_url)} | ${entry.attempt}: ${escapeMarkdown(entry.method)} |`
+      `${escapeMarkdown(entry.source_url)} | ${escapeMarkdown(entry.method)} | ${entry.attempt} | ${escapeMarkdown(entry.timestamp)} |`
     )),
     "",
     ...statistics.searchErrors.map((error) => `- Errore fonte: ${escapeMarkdown(error)}`)
@@ -1097,16 +1233,23 @@ function createReport(candidates, statistics, reviews = [], sources = []) {
 async function main() {
   const argumentsList = process.argv.slice(2);
   const dryRun = argumentsList.includes("--dry-run");
+  const pendingOnly = argumentsList.includes("--pending-only");
   const sourceUrlArgument = argumentsList.find((argument) =>
     argument.startsWith("--source-url=")
   );
   const unsupportedArguments = argumentsList.filter((argument) =>
-    argument !== "--dry-run" && argument !== sourceUrlArgument
+    argument !== "--dry-run" && argument !== "--pending-only" && argument !== sourceUrlArgument
   );
   if (unsupportedArguments.length > 0) {
     throw new Error(
-      "Argomento non riconosciuto. Usa --dry-run e/o --source-url=<URL>."
+      "Argomento non riconosciuto. Usa --dry-run, --pending-only e/o --source-url=<URL>."
     );
+  }
+  if (pendingOnly && !dryRun) {
+    throw new Error("--pending-only richiede --dry-run.");
+  }
+  if (pendingOnly && sourceUrlArgument) {
+    throw new Error("--pending-only non può essere combinato con --source-url.");
   }
 
   const sourceUrlFilter = sourceUrlArgument?.slice("--source-url=".length);
@@ -1126,7 +1269,7 @@ async function main() {
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
 
-  const rawResults = sourceUrls.map((source) => ({
+  const rawResults = pendingOnly ? [] : sourceUrls.map((source) => ({
     result: { url: source.url, title: source.name, description: "" },
     location: source.coverageArea ?? null
   }));
@@ -1172,6 +1315,16 @@ async function main() {
       "Tabella animator_candidates non disponibile; deduplicazione contro i candidati salvati non verificata."
     );
   }
+  const municipalities = await loadMunicipalities();
+  const historyPath = process.env.ANIMATOR_HISTORY_PATH || "animator-learning.json";
+  let previousLearning = null;
+  try {
+    previousLearning = JSON.parse(await readFile(historyPath, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    console.log("Storico locale assente: prima esecuzione o artifact scaduto.");
+  }
+  const learning = mergeLearning(previousLearning, learnApproved(storedCandidates));
   const { plan, providerDuplicates } = planCandidateWrites(
     candidates,
     providers,
@@ -1196,19 +1349,24 @@ async function main() {
       "field_sources,missing_fields,quality_score,discovery_locations," +
       "discovery_run_id,status,approved_provider_id");
   const reviews = await reviewPendingCandidates(supabase, pendingForReview, allSources, {
-    dryRun, autoApprove, providers
+    dryRun, autoApprove, providers, municipalities, learning
   });
   const newCandidates = plan
     .filter(({ action }) => action === "insert")
     .map(({ candidate }) => candidate);
   const report = createReport(newCandidates, {
-    sourcesAnalyzed: sourceUrls.length - searchErrors.length,
+    sourcesAnalyzed: (pendingOnly ? 0 : sourceUrls.length) - searchErrors.length,
     rawCandidates: discovered.length,
     internalDuplicates: discovered.length - candidates.length,
     providerDuplicates,
     searchErrors
   }, reviews, allSources);
   if (!dryRun) {
+    const updatedLearning = mergeLearning(learning, learnApproved(pendingForReview));
+    for (const review of reviews) {
+      if (review.candidate.id) updatedLearning.retries[review.candidate.id] = review.retryUrls;
+    }
+    await writeFile(historyPath, `${JSON.stringify(updatedLearning, null, 2)}\n`, "utf8");
     await writeFile(REPORT_PATH, `${report}\n`, "utf8");
     if (process.env.GITHUB_STEP_SUMMARY) {
       await writeFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`, { flag: "a" });
@@ -1217,7 +1375,7 @@ async function main() {
 
   console.log(report);
   console.log(
-    `Fonti analizzate: ${sourceUrls.length - searchErrors.length}; ` +
+    `Fonti analizzate: ${(pendingOnly ? 0 : sourceUrls.length) - searchErrors.length}; ` +
     `Candidati grezzi: ${discovered.length}; ` +
     `Duplicati interni: ${discovered.length - candidates.length}; ` +
     `Già presenti in providers: ${providerDuplicates}; ` +
@@ -1228,7 +1386,10 @@ async function main() {
   }
 }
 
-export { addEnrichment, candidatesMatch, createReport, enrichCandidate, fetchPublicHtml, getQualityScore, isApprovalEligible, reviewPendingCandidates, stagingUrl };
+export {
+  addEnrichment, candidatesMatch, classifyReviewStatus, createReport, enrichCandidate,
+  fetchPublicHtml, getQualityScore, isApprovalEligible, reviewPendingCandidates, stagingUrl
+};
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {

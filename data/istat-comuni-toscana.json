@@ -1,0 +1,1098 @@
+{
+    "reference":  "2026-02-21",
+    "municipalities":  [
+                           {
+                               "city":  "Aulla",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Bagnone",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Carrara",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Casola in Lunigiana",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Comano",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Filattiera",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Fivizzano",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Fosdinovo",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Licciana Nardi",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Massa",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Montignoso",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Mulazzo",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Podenzana",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Pontremoli",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Tresana",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Villafranca in Lunigiana",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Zeri",
+                               "province":  "MS"
+                           },
+                           {
+                               "city":  "Altopascio",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Bagni di Lucca",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Barga",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Borgo a Mozzano",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Camaiore",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Camporgiano",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Capannori",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Careggine",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Castelnuovo di Garfagnana",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Castiglione di Garfagnana",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Coreglia Antelminelli",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Forte dei Marmi",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Fosciandora",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Gallicano",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Lucca",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Massarosa",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Minucciano",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Molazzana",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Montecarlo",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Pescaglia",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Piazza al Serchio",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Pietrasanta",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Pieve Fosciana",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Porcari",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "San Romano in Garfagnana",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Seravezza",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Stazzema",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Vagli Sotto",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Viareggio",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Villa Basilica",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Villa Collemandina",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Fabbriche di Vergemoli",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Sillano Giuncugnano",
+                               "province":  "LU"
+                           },
+                           {
+                               "city":  "Agliana",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Buggiano",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Lamporecchio",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Larciano",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Marliana",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Massa e Cozzile",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Monsummano Terme",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Montale",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Montecatini-Terme",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Pescia",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Pieve a Nievole",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Pistoia",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Ponte Buggianese",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Quarrata",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Sambuca Pistoiese",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Serravalle Pistoiese",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Uzzano",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Chiesina Uzzanese",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Abetone Cutigliano",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "San Marcello Piteglio",
+                               "province":  "PT"
+                           },
+                           {
+                               "city":  "Bagno a Ripoli",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Barberino di Mugello",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Borgo San Lorenzo",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Calenzano",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Campi Bisenzio",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Capraia e Limite",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Castelfiorentino",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Cerreto Guidi",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Certaldo",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Dicomano",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Empoli",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Fiesole",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Firenze",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Firenzuola",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Fucecchio",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Gambassi Terme",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Greve in Chianti",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Impruneta",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Lastra a Signa",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Londa",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Marradi",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Montaione",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Montelupo Fiorentino",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Montespertoli",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Palazzuolo sul Senio",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Pelago",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Pontassieve",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Reggello",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Rignano sull\u0027Arno",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Rufina",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "San Casciano in Val di Pesa",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "San Godenzo",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Scandicci",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Sesto Fiorentino",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Signa",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Vaglia",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Vicchio",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Vinci",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Figline e Incisa Valdarno",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Scarperia e San Piero",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Barberino Tavarnelle",
+                               "province":  "FI"
+                           },
+                           {
+                               "city":  "Bibbona",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Campiglia Marittima",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Campo nell\u0027Elba",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Capoliveri",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Capraia Isola",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Castagneto Carducci",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Cecina",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Collesalvetti",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Livorno",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Marciana",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Marciana Marina",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Piombino",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Porto Azzurro",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Portoferraio",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Rosignano Marittimo",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "San Vincenzo",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Sassetta",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Suvereto",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Rio",
+                               "province":  "LI"
+                           },
+                           {
+                               "city":  "Bientina",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Buti",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Calci",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Calcinaia",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Capannoli",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Casale Marittimo",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Cascina",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Castelfranco di Sotto",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Castellina Marittima",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Castelnuovo di Val di Cecina",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Chianni",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Fauglia",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Guardistallo",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Lajatico",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Montecatini Val di Cecina",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Montescudaio",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Monteverdi Marittimo",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Montopoli in Val d\u0027Arno",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Orciano Pisano",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Palaia",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Peccioli",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Pisa",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Pomarance",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Ponsacco",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Pontedera",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Riparbella",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "San Giuliano Terme",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "San Miniato",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Santa Croce sull\u0027Arno",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Santa Luce",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Santa Maria a Monte",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Terricciola",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Vecchiano",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Vicopisano",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Volterra",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Casciana Terme Lari",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Crespina Lorenzana",
+                               "province":  "PI"
+                           },
+                           {
+                               "city":  "Anghiari",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Arezzo",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Badia Tedalda",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Bibbiena",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Bucine",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Capolona",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Caprese Michelangelo",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Castel Focognano",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Castel San Niccolò",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Castiglion Fibocchi",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Castiglion Fiorentino",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Cavriglia",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Chitignano",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Chiusi della Verna",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Civitella in Val di Chiana",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Cortona",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Foiano della Chiana",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Loro Ciuffenna",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Lucignano",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Marciano della Chiana",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Montemignaio",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Monterchi",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Monte San Savino",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Montevarchi",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Ortignano Raggiolo",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Pieve Santo Stefano",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Poppi",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "San Giovanni Valdarno",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Sansepolcro",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Sestino",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Subbiano",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Talla",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Terranuova Bracciolini",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Castelfranco Piandiscò",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Pratovecchio Stia",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Laterina Pergine Valdarno",
+                               "province":  "AR"
+                           },
+                           {
+                               "city":  "Abbadia San Salvatore",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Asciano",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Buonconvento",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Casole d\u0027Elsa",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Castellina in Chianti",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Castelnuovo Berardenga",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Castiglione d\u0027Orcia",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Cetona",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Chianciano Terme",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Chiusdino",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Chiusi",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Colle di Val d\u0027Elsa",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Gaiole in Chianti",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Montepulciano",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Monteriggioni",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Monteroni d\u0027Arbia",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Monticiano",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Murlo",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Piancastagnaio",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Pienza",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Poggibonsi",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Radda in Chianti",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Radicofani",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Radicondoli",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Rapolano Terme",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "San Casciano dei Bagni",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "San Gimignano",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "San Quirico d\u0027Orcia",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Sarteano",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Siena",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Sinalunga",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Sovicille",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Torrita di Siena",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Trequanda",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Montalcino",
+                               "province":  "SI"
+                           },
+                           {
+                               "city":  "Arcidosso",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Campagnatico",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Capalbio",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Castel del Piano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Castell\u0027Azzara",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Castiglione della Pescaia",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Cinigiano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Civitella Paganico",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Follonica",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Gavorrano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Grosseto",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Isola del Giglio",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Magliano in Toscana",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Manciano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Massa Marittima",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Monte Argentario",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Montieri",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Orbetello",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Pitigliano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Roccalbegna",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Roccastrada",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Santa Fiora",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Scansano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Scarlino",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Seggiano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Sorano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Monterotondo Marittimo",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Semproniano",
+                               "province":  "GR"
+                           },
+                           {
+                               "city":  "Cantagallo",
+                               "province":  "PO"
+                           },
+                           {
+                               "city":  "Carmignano",
+                               "province":  "PO"
+                           },
+                           {
+                               "city":  "Montemurlo",
+                               "province":  "PO"
+                           },
+                           {
+                               "city":  "Poggio a Caiano",
+                               "province":  "PO"
+                           },
+                           {
+                               "city":  "Prato",
+                               "province":  "PO"
+                           },
+                           {
+                               "city":  "Vaiano",
+                               "province":  "PO"
+                           },
+                           {
+                               "city":  "Vernio",
+                               "province":  "PO"
+                           }
+                       ],
+    "source":  "https://www.istat.it/wp-content/uploads/2024/09/Elenco-comuni-italiani.xlsx"
+}
