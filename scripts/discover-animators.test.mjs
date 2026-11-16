@@ -502,6 +502,7 @@ test("one verified social reaches automatic approval after recalculation and enr
     });
     assert.equal(client.updates[0].quality_score, 90);
     assert.equal(results[0].status, "approved_auto");
+    assert.equal(client.updates[1].status, "approved_auto");
     assert.equal(client.calls.length, 1);
   }
 });
@@ -527,30 +528,37 @@ test("approved_probable is reported for light verification without automatic RPC
   });
   assert.equal(result[0].status, "approved_probable");
   assert.equal(result[0].confidence.confidence_animatore, 60);
+  assert.equal(client.updates[0].status, "approved_probable");
   assert.equal(client.calls.length, 0);
 });
 
-test("approved and duplicate RPC outcomes persist candidate changes before RPC", async () => {
-  for (const [rpcStatus, expectedStatus] of [["approved", "approved_auto"], ["duplicate", "duplicate"]]) {
-    const client = fakeSupabase({ data: [{ status: rpcStatus, provider_id: "provider-one" }], error: null });
+test("automatic approval preserves the staging RPC and records the new status", async () => {
+  const client = fakeSupabase({ data: [{ status: "approved", provider_id: "provider-one" }], error: null });
+  const pending = structuredClone(candidate);
+  const result = await reviewPendingCandidates(client, [pending], [], { fetchPage, autoApprove: true });
+  assert.equal(result[0].status, "approved_auto");
+  assert.equal(pending.status, "approved_auto");
+  assert.equal(client.updates[0].quality_score, 100);
+  assert.equal(client.updates[1].status, "approved_auto");
+  assert.equal(client.calls.length, 1);
+});
+
+test("RPC duplicate and manual-review outcomes remain blocked", async () => {
+  const match = { provider_id: "p", provider_name: "P", identities: [{ kind: "website", value: "example.it" }] };
+  for (const [response, expected] of [
+    [{ status: "duplicate", provider_id: "p" }, "duplicate"],
+    [{ status: "manual_review", matches: [match, match] }, "pending_review"]
+  ]) {
+    const client = fakeSupabase({ data: [response], error: null });
     const result = await reviewPendingCandidates(client, [structuredClone(candidate)], [], {
       fetchPage, autoApprove: true
     });
-    assert.equal(result[0].status, expectedStatus);
-    assert.equal(client.updates[0].quality_score, 100);
-    assert.equal(client.calls[0].name, "approve_animator_candidate");
-    assert.equal(client.calls[0].params.p_city, "Firenze");
+    assert.equal(result[0].status, expected);
+    assert.equal(client.updates.length, 1);
   }
 });
 
-test("manual review remains pending, missing fields and duplicate candidates prevent approval", async () => {
-  const match = { provider_id: "p", provider_name: "P", identities: [{ kind: "website", value: "example.it" }] };
-  const client = fakeSupabase({ data: [{ status: "manual_review", matches: [match, match] }], error: null });
-  const reviewed = await reviewPendingCandidates(client, [structuredClone(candidate)], [], {
-    fetchPage, autoApprove: true
-  });
-  assert.equal(reviewed[0].status, "pending_review");
-
+test("missing fields and duplicate candidates prevent approval", async () => {
   const conflictClient = fakeSupabase({});
   const other = { ...structuredClone(candidate), id: "two", status: "approved" };
   const conflicts = await reviewPendingCandidates(conflictClient, [structuredClone(candidate), other], [], {

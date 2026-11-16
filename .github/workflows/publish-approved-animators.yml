@@ -1,4 +1,4 @@
-name: Publish Approved Animators (dry run)
+name: Publish Approved Animators
 
 on:
   workflow_dispatch:
@@ -6,8 +6,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-approved-animators
+  cancel-in-progress: false
+
 jobs:
-  preview:
+  publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -23,17 +27,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Simulate publication
-        run: node scripts/publish-approved-animators.mjs --dry-run
+      - name: Publish approved candidates
+        run: node scripts/publish-approved-animators.mjs --write
         env:
           STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
-          STAGING_SUPABASE_READ_ONLY_KEY: ${{ secrets.STAGING_SUPABASE_READ_ONLY_KEY }}
+          STAGING_SUPABASE_SECRET_KEY: ${{ secrets.STAGING_SUPABASE_SECRET_KEY }}
           PRODUCTION_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
-          PRODUCTION_SUPABASE_READ_ONLY_KEY: ${{ secrets.PRODUCTION_SUPABASE_READ_ONLY_KEY }}
+          PRODUCTION_SUPABASE_SECRET_KEY: ${{ secrets.PRODUCTION_SUPABASE_SECRET_KEY }}
 
-      - name: Upload dry-run report
+      - name: Upload publication report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: publish-approved-animators-report
           path: publish-approved-animators-report.md
-          if-no-files-found: error
+          if-no-files-found: ignore

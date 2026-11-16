@@ -1,18 +1,13 @@
 import "dotenv/config";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { candidatesMatch } from "./discover-animators.mjs";
-import { getProviderCategories } from "../src/lib/providerCategories.js";
+import { candidatesMatch, isApprovalEligible } from "./discover-animators.mjs";
+import { loadMunicipalities, normalize } from "./animator-learning.mjs";
 
 const STAGING_HOST = "eqonpqgazhmjbrjtexmg.supabase.co";
 const PRODUCTION_HOST = "yihognpbnhdolsnmicwi.supabase.co";
-const PROVINCES = new Set(["AR", "FI", "GR", "LI", "LU", "MS", "PI", "PO", "PT", "SI"]);
-const COPY_FIELDS = [
-  "id", "name", "provider_kind", "provider_type", "party_type", "city",
-  "province", "phone", "website", "social_url", "services", "coverage_area",
-  "notes", "source_url"
-];
+const APPROVED_STATUSES = ["approved_auto", "approved_probable"];
 const PAGE_SIZE = 500;
 
 function assertProject(value, expected) {
@@ -29,15 +24,7 @@ function assertProject(value, expected) {
   return url.toString();
 }
 
-function readOnlyFetch(url, options = {}) {
-  const method = (options.method ?? (url instanceof Request ? url.method : "GET")).toUpperCase();
-  if (!["GET", "HEAD"].includes(method)) {
-    throw new Error(`Operazione ${method} vietata: il workflow è esclusivamente read-only.`);
-  }
-  return fetch(url, options);
-}
-
-async function loadAll(client, table, filters = {}) {
+async function loadAll(client, table, filters = {}, configure = (query) => query) {
   const rows = [];
   const ids = new Set();
   let total;
@@ -45,18 +32,18 @@ async function loadAll(client, table, filters = {}) {
     let query = client.from(table).select("*", { count: "exact" })
       .order("id").range(rows.length, rows.length + PAGE_SIZE - 1);
     for (const [field, value] of Object.entries(filters)) query = query.eq(field, value);
-    const { data, error, count } = await query;
+    const { data, error, count } = await configure(query);
     if (error) throw new Error(`Lettura ${table}: ${error.message}`);
     if (!Array.isArray(data) || !Number.isInteger(count) || count < 0) {
       throw new Error(`Conteggio completo non disponibile per ${table}.`);
     }
     if (total !== undefined && total !== count) {
-      throw new Error(`I dati di ${table} sono cambiati durante la lettura; ripetere il dry-run.`);
+      throw new Error(`I dati di ${table} sono cambiati durante la lettura; riprovare.`);
     }
     total = count;
     for (const row of data) {
       if (row.id == null || ids.has(String(row.id))) {
-        throw new Error(`Lettura incoerente di ${table}: ID mancante o ripetuto; ripetere il dry-run.`);
+        throw new Error(`Lettura incoerente di ${table}: ID mancante o ripetuto.`);
       }
       ids.add(String(row.id));
     }
@@ -68,12 +55,29 @@ async function loadAll(client, table, filters = {}) {
   }
 }
 
+function loadApprovedCandidates(staging) {
+  return loadAll(staging, "animator_candidates", {},
+    (query) => query.in("status", APPROVED_STATUSES).is("published_at", null));
+}
+
+function canonicalName(value) {
+  return normalize(value).replace(/&/g, " e ")
+    .replace(/\b(animazione|animatori|animatore|feste|bambini|srl|snc|asd|di|e|il|la|per)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+}
+
+function slug(value) {
+  return normalize(value).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 function identityFields(record) {
   const socialUrls = String(record.social_url ?? "").split(/[;,\n]/).map((url) => url.trim());
   const validProfiles = (platform) => [...socialUrls, record[`${platform}_url`]]
     .filter((url) => candidatesMatch({ [`${platform}_url`]: url }, { [`${platform}_url`]: url }));
   return {
     name: record.name,
+    normalized_name: canonicalName(record.normalized_name || record.name),
+    slug: slug(record.slug || record.name),
     phone: String(record.phone ?? "").split(/[;,\n]|\s+[|/-]\s+/).map((phone) => phone.trim()),
     website: record.website,
     facebook_url: validProfiles("facebook"),
@@ -84,103 +88,106 @@ function identityFields(record) {
 function matchingFields(first, second) {
   const a = identityFields(first);
   const b = identityFields(second);
-  const scalarMatches = ["name", "website"].filter((field) =>
+  const matches = ["name", "website"].filter((field) =>
     candidatesMatch({ [field]: a[field] }, { [field]: b[field] })
   );
-  const listMatches = ["phone", "facebook_url", "instagram_url"].filter((field) =>
-    a[field].some((left) => b[field].some((right) =>
+  for (const field of ["slug", "normalized_name"]) {
+    if (a[field] && b[field] && a[field] === b[field]) matches.push(field);
+  }
+  for (const field of ["phone", "facebook_url", "instagram_url"]) {
+    if (a[field].some((left) => b[field].some((right) =>
       candidatesMatch({ [field]: left }, { [field]: right })
-    ))
-  );
-  return [...scalarMatches, ...listMatches];
+    ))) matches.push(field);
+  }
+  return matches;
 }
 
-function validWebsite(value) {
-  try {
-    const url = new URL(value);
-    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
-  } catch {
-    return false;
-  }
+function payloadFor(candidate, provider) {
+  const social = [candidate.facebook_url, candidate.instagram_url].filter(Boolean).join("; ");
+  return {
+    id: candidate.id,
+    animator_candidate_id: candidate.id,
+    name: candidate.name,
+    provider_kind: "feste",
+    party_type: "animatore",
+    city: candidate.city,
+    province: candidate.province,
+    address: provider?.address ?? null,
+    phone: candidate.phone,
+    email: provider?.email ?? null,
+    website: candidate.website,
+    social_url: social || provider?.social_url || null,
+    services: Array.isArray(candidate.services) ? candidate.services.join("; ") : candidate.services,
+    coverage_area: candidate.coverage_area ?? null,
+    notes: provider?.notes ?? null,
+    source_url: candidate.source_urls?.[0] ?? provider?.source_url ?? null,
+    status: "partial",
+    premium: false,
+    active: true,
+    source: "animator_discovery",
+    slug: candidate.slug || slug(candidate.name),
+    normalized_name: candidate.normalized_name || canonicalName(candidate.name)
+  };
 }
 
 function isTestRecord(candidate, provider) {
-  return [candidate.name, provider?.name, candidate.approved_provider_id, provider?.id]
+  return [candidate.name, provider?.name, candidate.id, provider?.id]
     .some((value) => /(?:^|[\s_-])test(?:$|[\s_-])/i.test(String(value ?? "").trim()));
 }
 
-function payloadFor(provider) {
-  return Object.fromEntries(COPY_FIELDS.map((field) => [field, provider[field] ?? null]));
-}
-
-function syncApprovedAnimators(candidates, stagingProviders, productionProviders) {
-  const approved = candidates.filter((candidate) => candidate.status === "approved");
+function syncApprovedAnimators(candidates, stagingProviders, productionProviders, sources, municipalities) {
+  const approved = candidates.filter((candidate) =>
+    APPROVED_STATUSES.includes(candidate.status) && candidate.published_at == null
+  );
   const stagedById = new Map(stagingProviders.map((provider) => [String(provider.id), provider]));
   const entries = approved.map((candidate) => {
     const provider = stagedById.get(String(candidate.approved_provider_id));
     const entry = {
-      name: candidate.name, candidate_id: candidate.id,
-      provider_id: candidate.approved_provider_id, quality_score: candidate.quality_score,
-      classification: "review_required", reasons: [], matches: [], payload: null,
-      identityRecords: provider ? [provider, candidate] : [candidate]
+      name: candidate.name, candidate_id: candidate.id, candidate, provider,
+      classification: "review_required", reasons: [], matches: [],
+      payload: payloadFor(candidate, provider),
+      identityRecords: provider ? [candidate, provider] : [candidate]
     };
     if (isTestRecord(candidate, provider)) {
-      entry.classification = "test_record";
       entry.reasons.push("Record identificato come test.");
       return entry;
     }
-    if (!provider) {
-      entry.reasons.push("Provider approvato non trovato nello staging.");
-      return entry;
-    }
-    entry.payload = payloadFor(provider);
-    for (const target of productionProviders) {
-      const fields = [...new Set(entry.identityRecords.flatMap((source) => matchingFields(source, target)))];
-      if (fields.length || String(target.id) === String(provider.id)) {
-        entry.matches.push({ id: target.id, name: target.name,
-          category: getProviderCategories(target), fields,
-          id_collision: String(target.id) === String(provider.id) });
-      }
-    }
-    const animatorMatches = entry.matches.filter((match) => match.category.includes("animatori"));
-    const otherMatches = entry.matches.filter((match) => !match.category.includes("animatori"));
-    if (animatorMatches.length === 1
-      && animatorMatches[0].fields.some((field) => ["phone", "facebook_url", "instagram_url"].includes(field))
-      && !otherMatches.length) {
+    const existing = productionProviders.filter((target) =>
+      entry.identityRecords.some((source) => matchingFields(source, target).length) ||
+      String(target.id) === String(candidate.id)
+    );
+    entry.matches = existing.map((target) => ({
+      id: target.id, name: target.name,
+      fields: [...new Set(entry.identityRecords.flatMap((source) => matchingFields(source, target)))]
+    }));
+    const own = existing.filter((target) =>
+      String(target.animator_candidate_id) === String(candidate.id) &&
+      target.source === "animator_discovery"
+    );
+    if (existing.length && !(existing.length === 1 && own.length === 1)) {
       entry.classification = "duplicate";
-      entry.reasons.push("Corrispondenza con animatore già presente in produzione.");
+      entry.reasons.push("Identità già presente in produzione.");
       return entry;
     }
-    if (entry.matches.length) {
-      entry.reasons.push("Corrispondenza ambigua, collisioni multiple, ID occupato o altre categorie: revisione manuale.");
-      return entry;
+    if (!isApprovalEligible({ ...candidate, status: "pending_review" }, sources)) {
+      entry.reasons.push("Qualità, contatti o fonti non validi.");
     }
-    if (!getProviderCategories(provider).includes("animatori")) entry.reasons.push("Categoria provider non animatore.");
-    if (!provider.name?.trim()) entry.reasons.push("Nome mancante.");
-    if (!provider.city?.trim()) entry.reasons.push("Città mancante.");
-    if (!PROVINCES.has(provider.province)) entry.reasons.push("Provincia toscana mancante o non valida (usare la sigla maiuscola).");
-    const identities = identityFields(provider);
-    if (!identities.phone.some((phone) => candidatesMatch({ phone }, { phone }))) entry.reasons.push("Telefono mancante o non valido.");
-    if (!validWebsite(provider.website)) entry.reasons.push("Sito mancante o non valido.");
-    const copiedSocials = identityFields({ social_url: provider.social_url });
-    if (!copiedSocials.facebook_url.length && !copiedSocials.instagram_url.length) entry.reasons.push("Social valido mancante.");
-    if (!entry.reasons.length) entry.classification = "publishable";
+    if (!municipalities || municipalities.get(normalize(candidate.city)) !== candidate.province) {
+      entry.reasons.push("Comune e provincia toscana non verificati.");
+    }
+    if (!entry.reasons.length) entry.classification = own.length ? "recover" : "publishable";
     return entry;
   });
-
-  const eligibleEntries = entries.filter((entry) => entry.classification !== "test_record");
-  for (let i = 0; i < eligibleEntries.length; i += 1) {
-    for (let j = i + 1; j < eligibleEntries.length; j += 1) {
-      const fields = [...new Set(eligibleEntries[i].identityRecords.flatMap((first) =>
-        eligibleEntries[j].identityRecords.flatMap((second) => matchingFields(first, second))
+  for (let i = 0; i < entries.length; i += 1) {
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const fields = [...new Set(entries[i].identityRecords.flatMap((first) =>
+        entries[j].identityRecords.flatMap((second) => matchingFields(first, second))
       ))];
-      const sameId = eligibleEntries[i].provider_id
-        && eligibleEntries[i].provider_id === eligibleEntries[j].provider_id;
-      if (fields.length || sameId) {
-        for (const [entry, other] of [[eligibleEntries[i], eligibleEntries[j]], [eligibleEntries[j], eligibleEntries[i]]]) {
+      if (fields.length) {
+        for (const [entry, other] of [[entries[i], entries[j]], [entries[j], entries[i]]]) {
           if (entry.classification === "duplicate") continue;
           entry.classification = "review_required";
-          entry.reasons.push(`Possibile duplicato nello staging con ${other.name}: ${fields.join(", ") || "id"}.`);
+          entry.reasons.push(`Possibile duplicato nello staging con ${other.name}: ${fields.join(", ")}.`);
         }
       }
     }
@@ -188,36 +195,78 @@ function syncApprovedAnimators(candidates, stagingProviders, productionProviders
   return entries;
 }
 
-function escapeMarkdown(value) {
-  return String(value ?? "-").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+async function publishCandidates(staging, production, entries, log = console.log) {
+  const summary = { total: entries.length, published: 0, duplicates: 0, errors: 0 };
+  for (const entry of entries) {
+    if (entry.classification === "duplicate") {
+      summary.duplicates += 1;
+      log(`[SKIP DUPLICATE] ${entry.name}`);
+      continue;
+    }
+    if (!["publishable", "recover"].includes(entry.classification)) {
+      summary.errors += 1;
+      log(`[ERROR] ${entry.name}: ${entry.reasons.join("; ")}`);
+      continue;
+    }
+    try {
+      const currentCandidate = await staging.from("animator_candidates")
+        .select("status,published_at").eq("id", entry.candidate_id).maybeSingle();
+      if (currentCandidate.error) throw new Error(`Lettura candidato: ${currentCandidate.error.message}`);
+      if (!currentCandidate.data || currentCandidate.data.status !== entry.candidate.status ||
+          currentCandidate.data.published_at != null) {
+        throw new Error("Candidato non più approvato o già pubblicato; verificare lo staging.");
+      }
+      const current = await loadAll(production, "providers");
+      const matches = current.filter((target) =>
+        entry.identityRecords.some((source) => matchingFields(source, target).length) ||
+        String(target.id) === String(entry.payload.id)
+      );
+      const own = matches.filter((target) =>
+        String(target.animator_candidate_id) === String(entry.candidate_id) &&
+        target.source === "animator_discovery"
+      );
+      if (matches.length && !(matches.length === 1 && own.length === 1)) {
+        summary.duplicates += 1;
+        log(`[SKIP DUPLICATE] ${entry.name}`);
+        continue;
+      }
+      if (!own.length) {
+        const { data, error } = await production.from("providers")
+          .upsert(entry.payload, { onConflict: "animator_candidate_id", ignoreDuplicates: true })
+          .select("id,animator_candidate_id");
+        if (error) throw new Error(`Upsert providers: ${error.message}`);
+        if (!Array.isArray(data) || data.length !== 1 ||
+            String(data[0].animator_candidate_id) !== String(entry.candidate_id)) {
+          throw new Error("Provider non inserito: possibile pubblicazione concorrente; riprovare.");
+        }
+      }
+      const { data, error } = await staging.from("animator_candidates")
+        .update({ published_at: new Date().toISOString() })
+        .eq("id", entry.candidate_id).eq("status", entry.candidate.status)
+        .is("published_at", null).select("id");
+      if (error) throw new Error(`Aggiornamento published_at: ${error.message}`);
+      if (!Array.isArray(data) || data.length !== 1) {
+        throw new Error("Candidato modificato contemporaneamente: verificare lo staging.");
+      }
+      summary.published += 1;
+      log(`[PUBLISHED] ${entry.name}`);
+    } catch (error) {
+      summary.errors += 1;
+      log(`[ERROR] ${entry.name}: ${error.message}`);
+    }
+  }
+  return summary;
 }
 
-function createReport(entries) {
-  const sections = [
-    ["publishable", "Nuovi animatori pubblicabili"],
-    ["duplicate", "Duplicati"],
-    ["review_required", "Record da revisionare"],
-    ["test_record", "Record di test"]
-  ];
-  const lines = ["# Publish Approved Animators — DRY RUN", "",
-    "Nessuna scrittura o pubblicazione effettuata.", "",
-    "Il risultato è limitato ai record visibili alle credenziali utilizzate.", ""];
-  for (const [status, title] of sections) {
-    const items = entries.filter((entry) => entry.classification === status);
-    lines.push(`## ${title} (${items.length})`, "", "| Nome | ID staging | Score | Motivi e corrispondenze |",
-      "|---|---|---:|---|");
-    for (const item of items) {
-      const notes = [...item.reasons, ...item.matches.map((match) =>
-        `${match.name} (${match.id}; ${match.category.join(", ") || "categoria sconosciuta"}): ${match.fields.join(", ") || "ID"}${match.id_collision ? ", ID occupato" : ""}`
-      )].join("; ");
-      lines.push(`| ${escapeMarkdown(item.name)} | ${escapeMarkdown(item.provider_id)} | ${escapeMarkdown(item.quality_score)} | ${escapeMarkdown(notes || "nessuna collisione rilevata")} |`);
-    }
-    lines.push("");
-  }
-  lines.push("## Payload proposto — solo simulazione", "", "```json",
-    JSON.stringify(entries.filter((entry) => entry.classification === "publishable")
-      .map((entry) => entry.payload), null, 2), "```", "");
-  return lines.join("\n");
+function createReport(summary) {
+  return [
+    "# Publish Approved Animators",
+    "",
+    `- Totale candidati: ${summary.total}`,
+    `- Pubblicati: ${summary.published}`,
+    `- Duplicati: ${summary.duplicates}`,
+    `- Errori: ${summary.errors}`
+  ].join("\n");
 }
 
 function requiredEnv(name) {
@@ -227,30 +276,36 @@ function requiredEnv(name) {
 }
 
 async function main() {
-  if (process.argv.slice(2).some((arg) => arg !== "--dry-run")) {
-    throw new Error("Unico argomento consentito: --dry-run. La pubblicazione non è implementata.");
+  if (process.argv.slice(2).length !== 1 || process.argv[2] !== "--write") {
+    throw new Error("La pubblicazione richiede esplicitamente --write; la modalità dry-run non è disponibile.");
   }
   const staging = createClient(assertProject(requiredEnv("STAGING_SUPABASE_URL"), STAGING_HOST),
-    requiredEnv("STAGING_SUPABASE_READ_ONLY_KEY"),
-    { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: readOnlyFetch } });
+    requiredEnv("STAGING_SUPABASE_SECRET_KEY"), { auth: { persistSession: false, autoRefreshToken: false } });
   const production = createClient(assertProject(requiredEnv("PRODUCTION_SUPABASE_URL"), PRODUCTION_HOST),
-    requiredEnv("PRODUCTION_SUPABASE_READ_ONLY_KEY"),
-    { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: readOnlyFetch } });
-  const [candidates, stagingProviders, productionProviders] = await Promise.all([
-    loadAll(staging, "animator_candidates", { status: "approved" }),
+    requiredEnv("PRODUCTION_SUPABASE_SECRET_KEY"), { auth: { persistSession: false, autoRefreshToken: false } });
+  const sources = JSON.parse(await readFile(new URL("../data/animator-sources.json", import.meta.url), "utf8"));
+  const [candidates, stagingProviders, productionProviders, municipalities] = await Promise.all([
+    loadApprovedCandidates(staging),
     loadAll(staging, "providers"),
-    loadAll(production, "providers")
+    loadAll(production, "providers"),
+    loadMunicipalities()
   ]);
-  const report = createReport(syncApprovedAnimators(candidates, stagingProviders, productionProviders));
+  const entries = syncApprovedAnimators(candidates, stagingProviders, productionProviders, sources, municipalities);
+  const summary = await publishCandidates(staging, production, entries);
+  const report = createReport(summary);
   const reportPath = process.env.REPORT_PATH || "publish-approved-animators-report.md";
   await writeFile(reportPath, `${report}\n`, "utf8");
   if (process.env.GITHUB_STEP_SUMMARY) {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${report}\n`, { flag: "a" });
   }
   console.log(report);
+  if (summary.errors) process.exitCode = 1;
 }
 
-export { assertProject, createReport, identityFields, loadAll, matchingFields, readOnlyFetch, syncApprovedAnimators };
+export {
+  assertProject, createReport, identityFields, loadAll, loadApprovedCandidates, matchingFields,
+  payloadFor, publishCandidates, syncApprovedAnimators
+};
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {

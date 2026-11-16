@@ -1021,6 +1021,8 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
     status = classifyReviewStatus(candidate, confidence, {
       duplicate, geoConsistent, sources, linkedPolicySources
     });
+    let persistedStatus = options.autoApprove && status === "approved_probable"
+      ? status : "pending_review";
     if (!options.dryRun) {
       const { data, error } = await supabase.from("animator_candidates").update({
         phone: candidate.phone,
@@ -1037,6 +1039,7 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
         field_sources: candidate.field_sources,
         missing_fields: candidate.missing_fields,
         quality_score: candidate.quality_score,
+        status: persistedStatus,
         updated_at: new Date().toISOString()
       }).eq("id", stored.id).eq("status", "pending_review").select("id");
       if (error) throw new Error(`Aggiornamento candidato ${stored.name}: ${error.message}`);
@@ -1064,12 +1067,20 @@ async function reviewPendingCandidates(supabase, candidates, sources, options = 
           if (!provider.data || provider.data.provider_kind !== "feste" || provider.data.party_type !== "animatore") {
             throw new Error(`Provider approvato non trovato o categoria non valida per ${stored.name}.`);
           }
+          const transition = await supabase.from("animator_candidates")
+            .update({ status: "approved_auto" }).eq("id", stored.id)
+            .eq("status", "approved").eq("approved_provider_id", approval.provider_id).select("id");
+          if (transition.error || transition.data?.length !== 1) {
+            throw new Error(`Promozione ${stored.name}: provider creato ma stato approved_auto non salvato; verificare lo staging. ${transition.error?.message ?? ""}`);
+          }
+          persistedStatus = "approved_auto";
+        } else if (approval.status === "duplicate") {
+          persistedStatus = "duplicate";
         }
       }
     }
     Object.assign(stored, candidate, {
-      status: approval?.status === "approved" || approval?.status === "duplicate"
-        ? approval.status : "pending_review"
+      status: options.dryRun ? "pending_review" : persistedStatus
     });
     results.push({ candidate, status, approval, failures, enrichments,
       enrichment_attempts, enrichment_successes, enrichment_failures, retryUrls, linkedPolicySources,

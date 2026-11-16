@@ -81,7 +81,9 @@ function pageKind(url) {
 }
 
 function learnApproved(candidates) {
-  const records = candidates.filter((candidate) => candidate.status === "approved").map((candidate) => ({
+  const records = candidates.filter((candidate) =>
+    ["approved", "approved_auto", "approved_probable"].includes(candidate.status)
+  ).map((candidate) => ({
     id: candidate.id,
     patterns: Object.fromEntries(["city", "province", "phone", "facebook_url", "instagram_url",
       "website", "services", "coverage_area"].filter((field) => candidate.field_sources?.[field])

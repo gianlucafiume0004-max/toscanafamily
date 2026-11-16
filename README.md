@@ -10,14 +10,74 @@ La secret key o service role key non deve mai essere inserita nel frontend.
 
 Prima di usare l'importatore eventi aggiornato, applica le migrazioni Supabase in `supabase/migrations` per creare i campi di contatto, indirizzo e prenotazione degli eventi. L'importatore legge dati strutturati, metadati, microdata, link e contenuti della pagina sorgente. Con `--write`, inserisce nuovi eventi e completa solo i campi vuoti degli eventi già presenti.
 
+## Importazione parchi OpenStreetMap
+
+`scripts/import-osm.mjs` cerca nella stessa area geografica usata in precedenza
+`leisure=park`, `garden`, `nature_reserve`, `playground` e `indoor_play`.
+Elabora prima i parchi; un playground interamente contenuto nel perimetro di
+un parco rappresentato non viene inserito separatamente. Sono supportati
+poligoni OSM e relazioni multipolygon/boundary complete; geometrie incomplete
+o ambigue non vengono considerate una prova di contenimento. I playground
+già presenti sono conservati, comprese recensioni e segnalazioni: eventuali
+duplicati sono riportati nei log per una revisione manuale. Un possibile
+duplicato con lo stesso nome e stesso comune, comune sconosciuto, oppure entro
+200 metri se entrambi hanno coordinate, non viene importato automaticamente. Il confronto non
+identifica tutti i duplicati, soprattutto nomi differenti o confini complessi.
+
+Lo script conserva i valori esistenti, completa solo campi vuoti e sostituisce
+solo nomi generici con nomi più informativi. Per un oggetto senza nome usa
+indirizzo, quartiere o comune; senza elementi sufficienti lo segnala e lo
+salta. Comune nullo non causa l'esclusione: si prova prima a ricavarlo dalle
+coordinate. Per relazioni e poligoni il punto è il centro del rettangolo
+delimitante, che può cadere fuori da un'area irregolare; verificare
+manualmente coordinate e geocodifica prima della pubblicazione.
+
+I tag OSM e la cache `data/reverse-geocode-parks-cache.json` vengono usati
+per completare `comune`, `city`, `provincia`, `province`, `indirizzo` e
+`address`; una provincia toscana mancante può essere dedotta da un comune
+univoco tramite il dataset ISTAT già usato dalla discovery. Per risultati non
+in cache configurare `REVERSE_GEOCODE_URL` con un endpoint **HTTPS autorizzato**
+compatibile con la risposta Nominatim `jsonv2` e le condizioni del fornitore.
+Il servizio pubblico `nominatim.openstreetmap.org` è rifiutato per evitare
+richieste massive automatiche. Senza endpoint né cache i campi mancanti
+restano tali; i record nominati possono comunque essere importati e quelli
+senza nome o località sono segnalati. L'app può ancora escludere un record
+privo di comune e provincia: verificare i campi prima di considerarlo visibile.
+Il reverse geocoding può associare strade o confini vicini e va verificato.
+
+Il workflow `.github/workflows/import-osm.yml` esegue **solo anteprime** sia
+su pianificazione sia su avvio manuale; per scrivere occorre selezionare
+esplicitamente `write` nell'avvio manuale. Configurare il servizio autorizzato
+con la variabile GitHub `PARK_REVERSE_GEOCODE_URL`; configurare i secret
+`SUPABASE_URL` e `SUPABASE_SECRET_KEY` per il progetto previsto. La chiave
+deve permettere la lettura completa della tabella, altrimenti i controlli
+duplicati potrebbero essere incompleti. In locale, con le variabili
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e, facoltativamente,
+`REVERSE_GEOCODE_URL` impostate nell'ambiente:
+
+```powershell
+node scripts/import-osm.mjs
+# Solo dopo verifica dell'anteprima:
+node scripts/import-osm.mjs --write
+node --test scripts/import-osm.test.mjs scripts/reverse-geocode-parks.test.mjs
+```
+
+Il report nei log conta trovati, nuovi, aggiornati, duplicati, esclusi ed
+errori; in anteprima i conteggi sono simulati. Errori di rete o database
+sono segnalati e producono un esito non riuscito; una scrittura può aver
+già salvato gli altri record, quindi controllare il report prima di ripetere.
+Lo script separato `scripts/reverse-geocode-parks.mjs` considera anche parchi
+con nome e completa i campi vuoti in entrambe le lingue; usa la stessa cache
+e, per richieste non presenti in cache, richiede `REVERSE_GEOCODE_URL`.
+
 ## Discovery animatori nello staging
 
 Il workflow `.github/workflows/discover-animators.yml` usa esclusivamente il
 progetto staging `eqonpqgazhmjbrjtexmg`. Configurare i secret GitHub
 `STAGING_SUPABASE_URL` e `STAGING_SUPABASE_SECRET_KEY` con l'URL e la service
-role key dello staging; non usare credenziali di produzione. La migration
-`20261107174500_approve_animator_candidates.sql` deve essere già installata
-nello staging. Il workflow non installa migration.
+role key dello staging; non usare credenziali di produzione. Le migration `20261107174500_approve_animator_candidates.sql` e
+`20261116194500_animator_publication.sql` devono essere già installate nello
+staging. Il workflow non installa migration.
 
 La discovery esamina le fonti configurate in `data/animator-sources.json` e
 rivede tutti i candidati `pending_review`, anche se non sono stati scoperti
@@ -92,17 +152,20 @@ Il report classifica i candidati idonei come `approved_auto`
 o `duplicate`. `approved_probable` è considerato pubblicabile dopo la verifica
 leggera; la sezione `QUASI APPROVATI` evidenzia i candidati promossi e ciò che
 manca agli altri. In `--dry-run` questi sono esiti simulati: non cambiano lo
-stato persistito e non chiamano la RPC. Nelle esecuzioni con scrittura solo
-`approved_auto` viene passato alla RPC; `approved_probable` resta
-`pending_review` nel database finché non termina la verifica editoriale.
+stato persistito e non chiamano la RPC. Con scrittura e
+`ANIMATOR_AUTO_APPROVE=true`, `approved_probable` viene salvato direttamente;
+`approved_auto` passa prima dalla RPC di staging e, se approvato, viene
+salvato con il nuovo stato. Se la RPC crea il provider ma il successivo
+aggiornamento dello stato fallisce, il run fallisce: il candidato può rimanere
+`approved` e richiede una verifica manuale prima di riprovare.
 La classificazione non riduce i controlli: per essere
 promosso il candidato deve comunque avere `quality_score >= 90`, telefono,
 sito, comune e provincia toscana verificati, almeno un social ufficiale con
 fonte valida e nessun duplicato tra candidati o provider. Province non toscane,
 fonti non verificabili e collisioni continuano a impedire la promozione.
 Con `ANIMATOR_AUTO_APPROVE=true`, solo `approved_auto` viene passato alla RPC;
-`approved_probable` è segnalato nel report per la verifica editoriale e non
-viene inserito automaticamente. Queste confidenze sono punteggi euristici,
+`approved_probable` resta contrassegnato come da verificare leggermente, ma è
+selezionabile dal publisher. Queste confidenze sono punteggi euristici,
 non probabilità calibrate. Servizi, copertura e il secondo social non sono
 obbligatori per la promozione, ma restano indicati fra i dati mancanti.
 Possibili duplicati fra candidati o provider,
@@ -137,56 +200,47 @@ solo se `ANIMATOR_AUTO_APPROVE=true`. `--source-url=<URL>` restringe la
 discovery iniziale, non la revisione delle fonti degli altri candidati.
 Eseguire i test isolati con `node --test scripts/discover-animators.test.mjs`.
 
-## Publish Approved Animators: solo dry-run
+## Publish Approved Animators
 
-Il workflow manuale `.github/workflows/publish-approved-animators.yml` genera
-un piano di pubblicazione, senza eseguire pubblicazioni né chiamare RPC. Lo
-script `scripts/publish-approved-animators.mjs` accetta solo `--dry-run` e
-consente esclusivamente richieste HTTP GET e HEAD ai progetti Supabase previsti.
-Anche `syncApprovedAnimators()` è una funzione pura che prepara il piano:
-non implementa inserimenti, aggiornamenti o cancellazioni.
+**Il workflow manuale scrive in produzione.** Prima di abilitarlo, applicare
+`20261116194500_animator_publication.sql` a staging e produzione dopo le
+migration precedenti e verificare schema e policy di entrambi i progetti. La
+migration aggiunge `published_at` e i nuovi stati ai candidati dove la tabella
+esiste, più i campi di pubblicazione su `providers`. I vecchi candidati
+`approved` non vengono modificati né pubblicati automaticamente.
 
-Configurare nei secret GitHub `STAGING_SUPABASE_URL` e
-`PRODUCTION_SUPABASE_URL` con gli URL rispettivamente dei progetti
-`eqonpqgazhmjbrjtexmg` e `yihognpbnhdolsnmicwi`, e
-`STAGING_SUPABASE_READ_ONLY_KEY` e `PRODUCTION_SUPABASE_READ_ONLY_KEY` con
-credenziali dedicate e **di sola lettura**. Non usare la service role key:
-il database deve negare scritture indipendentemente dal blocco lato script.
-Le credenziali devono poter leggere tutti gli `animator_candidates` approvati
-e tutti i `providers` nello staging, e tutti i `providers` in produzione,
-inclusi quelli nascosti da RLS. Predisporre autorizzazioni e policy appropriate
-separatamente: il workflow non modifica policy. Il conteggio esatto e la
-paginazione verificano solo i record visibili, non la completezza rispetto
-alle policy RLS. Verificare tale visibilità prima di considerare attendibile il
-report: una chiave pubblica potrebbe produrre risultati incompleti. Il
-conteggio stabile non garantisce uno snapshot coerente se i dati cambiano
-durante la lettura; rieseguire la simulazione prima di ogni valutazione.
+Configurare `STAGING_SUPABASE_URL`, `PRODUCTION_SUPABASE_URL`,
+`STAGING_SUPABASE_SECRET_KEY` e `PRODUCTION_SUPABASE_SECRET_KEY`. Le credenziali
+devono poter leggere tutti i provider e i candidati pertinenti, scrivere i
+provider in produzione e aggiornare `published_at` nello staging; policy RLS
+incomplete possono nascondere duplicati. Limitare l'accesso ai secret e
+all'avvio manuale del workflow.
 
-Avviare manualmente il workflow dalla scheda Actions; la summary e l'artifact
-`publish-approved-animators-report` contengono il report e i payload proposti.
-Il report può includere note e contatti dei provider: limitarne l'accesso e
-la conservazione secondo le policy del progetto.
+L'esecuzione richiede esplicitamente:
 
-Vengono considerati solo candidati `approved`, collegati al provider staging.
-Sono pubblicabili soltanto provider non di test, classificati come animatori,
-con città, sigla provinciale toscana maiuscola, telefono valido, sito HTTP(S),
-un profilo Facebook o Instagram valido nel campo `social_url` e nessuna
-corrispondenza rilevata. Il controllo verifica la forma dei contatti, non che
-il sito sia attivo o che il social sia ufficiale. Nome, telefono, dominio
-website e profili social vengono confrontati anche con tutte le categorie
-produttive; l'ID è un controllo supplementare. Un singolo match telefono o
-social con un animatore è classificato duplicato; un solo nome o dominio,
-corrispondenze multiple, collisioni con altre categorie o solo ID richiedono
-revisione. Anche possibili duplicati fra approved nello staging sono bloccati.
-Le euristiche possono sia confondere attività con contatti condivisi sia
-non riconoscere duplicati con dati diversi: occorre una verifica manuale.
-I record di test sono riconosciuti dalla parola `test` nel nome o nell'ID,
-delimitata da spazi, trattini o underscore: altri record di prova potrebbero
-richiedere identificazione manuale.
+```powershell
+node scripts/publish-approved-animators.mjs --write
+```
 
-Il piano copia, senza trasformazioni, solo `id`, `name`, `provider_kind`,
-`provider_type`, `party_type`, `city`, `province`, `phone`, `website`,
-`social_url`, `services`, `coverage_area`, `notes` e `source_url`. Non è
-previsto un comando di scrittura: una futura pubblicazione richiederà una
-progettazione e autorizzazione separate, inclusi controlli di concorrenza.
-Eseguire i test con `node --test scripts/publish-approved-animators.test.mjs`.
+Non esiste un'opzione dry-run per il publisher. Sono selezionati solo i
+candidati `approved_auto` o `approved_probable` con `published_at` nullo:
+verificare leggermente i `probable` prima di avviare il workflow. Il publisher
+ricontrolla punteggio, fonti, telefono, sito, social e comune/provincia ISTAT
+e cerca duplicati per nome normalizzato, dominio, slug, telefono e social
+contro tutti i provider; collisioni tra candidati e record di test sono
+bloccati. Gli errori e il riepilogo sono riportati nella summary e nell'artifact.
+
+I provider sono inseriti tramite upsert senza sovrascrivere record esistenti,
+con `active=true` e `source=animator_discovery`. L'identificativo univoco
+`animator_candidate_id` consente di riprendere la marcatura se l'inserimento
+riesce ma l'aggiornamento di `published_at` fallisce. In tal caso il run
+segnala errore e va ripetuto dopo aver verificato i dati.
+
+**Concorrenza:** staging e produzione non condividono una transazione. Il
+workflow serializza le proprie esecuzioni e ricontrolla i duplicati subito
+prima dell'inserimento, ma non impedisce a processi esterni di creare un
+duplicato tra controllo e upsert. Coordinare tutte le altre scritture durante
+la pubblicazione; il conteggio e i controlli dipendono inoltre dalla visibilità
+delle credenziali. Il publisher non installa migration né modifica policy.
+Eseguire i test isolati con
+`node --test scripts/discover-animators.test.mjs scripts/publish-approved-animators.test.mjs`.
