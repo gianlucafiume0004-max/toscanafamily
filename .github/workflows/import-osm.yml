@@ -2,14 +2,26 @@ name: Import OSM ToscanaFamily
 
 on:
   workflow_dispatch:
+    inputs:
+      write:
+        description: "Scrivere su Supabase dopo aver verificato il dry-run"
+        type: boolean
+        default: false
   schedule:
     - cron: "0 3 1 * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-osm-parks
+  cancel-in-progress: false
 
 jobs:
   importa-osm:
     name: Importa dati OpenStreetMap
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
 
     steps:
       - name: Scarica repository
@@ -24,27 +36,15 @@ jobs:
       - name: Installa dipendenze
         run: npm ci
 
-      - name: Importa dati OSM con tentativi automatici
+      - name: Importa dati OSM
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          REVERSE_GEOCODE_URL: ${{ vars.PARK_REVERSE_GEOCODE_URL }}
+          WRITE_REQUESTED: ${{ inputs.write }}
         run: |
-          for attempt in 1 2 3 4 5
-          do
-            echo "Tentativo $attempt di 5..."
-
-            if node scripts/import-osm.mjs
-            then
-              echo "Importazione completata correttamente."
-              exit 0
-            fi
-
-            if [ "$attempt" -lt 5 ]
-            then
-              echo "Tentativo fallito. Nuovo tentativo tra 30 secondi..."
-              sleep 30
-            fi
-          done
-
-          echo "Importazione fallita dopo 5 tentativi."
-          exit 1
+          if [ "$WRITE_REQUESTED" = "true" ]; then
+            node scripts/import-osm.mjs --write
+          else
+            node scripts/import-osm.mjs
+          fi

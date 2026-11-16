@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -10,7 +10,7 @@ dotenv.config({ path: resolve(projectRoot, ".env") });
 dotenv.config({ path: resolve(projectRoot, ".env.local") });
 
 const CACHE_FILE = resolve(projectRoot, "data", "reverse-geocode-parks-cache.json");
-const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
+const REVERSE_GEOCODE_URL = process.env.REVERSE_GEOCODE_URL || "";
 const REQUEST_INTERVAL_MS = 1100;
 const MAX_RETRIES = 3;
 const MAX_PAGE_SIZE = 500;
@@ -70,11 +70,6 @@ function normalizeName(value) {
     .replace(/\s+/g, " ");
 }
 
-function isGenericParkName(value) {
-  const name = normalizeName(value);
-  return name === "area gioco" || name === "area giochi";
-}
-
 function isBlank(value) {
   return value == null || (typeof value === "string" && !value.trim());
 }
@@ -109,7 +104,8 @@ function mapAddress(result) {
   const street = firstNonBlank(address.road, address.pedestrian);
   const houseNumber = firstNonBlank(address.house_number);
   const indirizzo = [street, houseNumber].filter(Boolean).join(" ");
-  const provincia = firstNonBlank(address.county, address.state_district);
+  const provincia = firstNonBlank(address.county, address.state_district)
+    .replace(/^(città metropolitana di|provincia di)\s+/i, "");
   const regione = firstNonBlank(address.state);
   const values = { comune, indirizzo, provincia };
 
@@ -145,7 +141,12 @@ async function waitForRequestInterval() {
 }
 
 async function requestReverseGeocode(latitude, longitude) {
-  const url = new URL(NOMINATIM_ENDPOINT);
+  if (!REVERSE_GEOCODE_URL) return { error: "REVERSE_GEOCODE_URL non configurato e coordinate non presenti nella cache." };
+  const url = new URL(REVERSE_GEOCODE_URL);
+  if (url.protocol !== "https:" || url.username || url.password ||
+    url.hostname.toLowerCase() === "nominatim.openstreetmap.org") {
+    throw new Error("REVERSE_GEOCODE_URL deve essere un servizio HTTPS autorizzato, diverso dal Nominatim pubblico.");
+  }
   url.search = new URLSearchParams({
     lat: latitude.toFixed(7),
     lon: longitude.toFixed(7),
@@ -234,7 +235,7 @@ async function loadCandidates(supabase, limit, name) {
   for (let offset = 0; ; offset += MAX_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("parks")
-      .select("id, nome, comune, indirizzo, provincia, latitudine, longitudine, outside_tuscany")
+      .select("id, nome, comune, city, indirizzo, address, provincia, province, latitudine, longitudine, outside_tuscany")
       .order("id", { ascending: true })
       .range(offset, offset + MAX_PAGE_SIZE - 1);
 
@@ -244,7 +245,8 @@ async function loadCandidates(supabase, limit, name) {
       if (park.outside_tuscany === true) continue;
       const matchesName = typeof park.nome === "string" &&
         park.nome.trim().toLocaleLowerCase("it-IT") === name;
-      if ((name === null ? !isGenericParkName(park.nome) : !matchesName) || !isBlank(park.comune)) continue;
+      if (name !== null && !matchesName) continue;
+      if (!["comune", "city", "indirizzo", "address", "provincia", "province"].some((field) => isBlank(park[field]))) continue;
       const latitude = parseCoordinate(park.latitudine, -90, 90);
       const longitude = parseCoordinate(park.longitudine, -180, 180);
       if (latitude === null || longitude === null) continue;
@@ -261,9 +263,15 @@ async function writeParkFields(supabase, park, values) {
   const updates = {};
   const writableFields = [];
 
-  for (const field of ["comune", "indirizzo", "provincia"]) {
-    if (!values[field] || !isBlank(park[field])) continue;
-    updates[field] = values[field];
+  for (const [field, source] of [
+    ["comune", "comune"], ["city", "comune"],
+    ["indirizzo", "indirizzo"], ["address", "indirizzo"],
+    ["provincia", "provincia"], ["province", "provincia"]
+  ]) {
+    const alias = { comune: "city", indirizzo: "address", provincia: "province" }[source];
+    const value = park[source] || park[alias] || values[source];
+    if (!value || !isBlank(park[field])) continue;
+    updates[field] = value;
     writableFields.push(field);
   }
 
@@ -325,7 +333,7 @@ async function main() {
     const key = coordinateKey(latitude, longitude);
     let cached = cache[key];
 
-    if (!cached) {
+    if (!cached || cached.status !== "success") {
       const response = await requestReverseGeocode(latitude, longitude);
       cached = {
         status: response.error ? "failed" : "success",
@@ -335,7 +343,10 @@ async function main() {
         error: response.error ?? null,
         cachedAt: new Date().toISOString()
       };
-      cache[key] = cached;
+      if (!response.error) {
+        cache[key] = cached;
+        await saveCache(cache);
+      }
     }
 
     let writeResult = options.write ? "Non aggiornato" : "Preview";
@@ -364,28 +375,29 @@ async function main() {
       comune: values.comune || "(mancante)",
       indirizzo: values.indirizzo || "(mancante)",
       provincia: values.provincia || "(mancante)",
-      esito: cached.error || writeResult
+      esito: cached.error || writeResult,
+      failed: cached.status !== "success" || writeResult.startsWith("Errore") ||
+        writeResult.startsWith("Record non aggiornato")
     });
 
-    await saveCache(cache);
   }
 
   console.table(results);
   if (results.some((result) => result.esito.includes("mancante"))) {
     console.warn("Alcune risposte non hanno restituito tutti i campi richiesti; sono indicati come (mancante).");
   }
-  const failures = results.filter((result) =>
-    result.esito.startsWith("Errore") ||
-    result.esito.includes("tentativi esauriti") ||
-    result.esito.includes("senza indirizzo") ||
-    result.esito.includes("non contiene")
-  );
+  const failures = results.filter((result) => result.failed);
   if (failures.length) {
     console.error(`Record con errori o risposta non valida: ${failures.length}`);
+    process.exitCode = 1;
   }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+export { loadCandidates, writeParkFields };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
